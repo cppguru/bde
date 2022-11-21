@@ -6,6 +6,7 @@
 #include <bslma_testallocator.h>           // for testing only
 
 #include <bsls_platform.h>
+#include <bsls_stopwatch.h>
 #include <bsls_types.h>
 
 #include <bslim_testutil.h>
@@ -162,6 +163,9 @@ int main(int argc, char *argv[])
     bslma::TestAllocator testAllocator(veryVeryVerbose);
 
     using bsl::string_view;
+
+    if (test > 1) exit(-1); // Just run the benchmark now
+    test = -1;
 
     switch (test) { case 0:  // Zero is always the leading case.
       case 11: {
@@ -1889,7 +1893,8 @@ int main(int argc, char *argv[])
                                 FAIL || (sscanf(SPEC, "%lf", &VALUE) == 1));
                 }
 #else
-                sscanf(SPEC, "%lf", &VALUE);
+                LOOP_ASSERT(SPEC,
+                            FAIL || (sscanf(SPEC, "%lf", &VALUE) == 1));
 #endif
                 const int curLen = strlen(SPEC);
 
@@ -2876,6 +2881,201 @@ int main(int argc, char *argv[])
                 LOOP_ASSERT(LINE, VALUE == rv);
             }
         }
+      } break;
+      case -1: {
+        // --------------------------------------------------------------------
+        // BENCHMARKING 'parseDouble'
+        // --------------------------------------------------------------------
+
+        if (verbose) cout << endl
+                          << "BENCHMARKING 'parseDouble'" << endl
+                          << "==========================" << endl;
+
+        const int measuredRuns = argc > 2 ? atoi(argv[2]) : 500000;
+        const int warmUpRuns   = argc > 3 ? atoi(argv[3]) : 50;
+
+        if (0 == measuredRuns || 0 == warmUpRuns) {
+            cout << "Usage: " << argv[0] << "[measured-runs [warm-up-runs]]\n"
+                "\tmeasured-runs default: 10000\n"
+                "\twarm-up-runs default : 50\n\n";
+            exit(-1);
+        }
+
+        static const char *DATA[] = {
+            "",
+
+            "+", "-", ".", "a", "0", "1", "9", "e", "E",
+
+            "++", "+-", "-+", "--", "+1", "-1", "10", "90", ".0", ".1", ".9",
+            "+e", "-e", "+E", "-E", "0e", "0E",
+
+            "-10", "-90", "-.0", "-.1", "-.9", "0ee", "0eE", "0Ee", "0EE",
+            "0e0", "0e1", "1e0", "1e1", "1e2", "0E0", "0E1", "1E0", "1E1",
+            "1E2",
+
+            "1.23E2E", "123x", "1x",
+
+            ".25", "0.25", "-0.25", "00.25", "-00.25", "0.125", "-0.125",
+            "0.0625", "-0.0625", "0.3125", "-0.3125",
+
+            "100",
+            "10000",
+            "1000000",
+            "100000000",
+            "10000000000",
+            "1000000000000",
+            "100000000000000",
+            "10000000000000000",
+            "1000000000000000000",
+            "100000000000000000000",
+            "10000000000000000000000",
+            "1000000000000000000000000",
+            "100000000000000000000000000",
+            "10000000000000000000000000000",
+            "1000000000000000000000000000000",
+            "100000000000000000000000000000000",
+            "10000000000000000000000000000000000",
+            "1000000000000000000000000000000000000",
+
+            "-100",
+            "-10000",
+            "-1000000",
+            "-100000000",
+            "-10000000000",
+            "-1000000000000",
+            "-100000000000000",
+            "-10000000000000000",
+            "-1000000000000000000",
+            "-100000000000000000000",
+            "-10000000000000000000000",
+            "-1000000000000000000000000",
+            "-100000000000000000000000000",
+            "-10000000000000000000000000000",
+            "-1000000000000000000000000000000",
+            "-100000000000000000000000000000000",
+            "-10000000000000000000000000000000000",
+            "-1000000000000000000000000000000000000",
+
+            "1e500", "1e-500",
+
+            "1e1000000000", "1e2147483647", "1e-2147483647", "1e-2147483648",
+
+            "12345678000000000000",
+
+            // Boundary-value cases for 64-bit double.
+             "1e308",  "1.7e308",  "1.8e308",
+            "-1e308", "-1.7e308", "-1.8e308",
+
+            // Stress tests for converting decimal to 64-bit double. See
+            // "A Program for Testing IEEE Decimal-Binary Conversions"
+            // Vern Paxson, ICIR 1991.
+            "5e125",
+            "6.9e268",
+            "9.99e-24",
+            "7.861e-31",
+            "7.5569e-250",
+            "9.28609e-256",
+            "9.210917e86",
+            "8.4863171e121",
+            "6.53777767e281",
+            "5.232604057e-289",
+            "2.7235667517e-99",
+            "6.53532977297e-112",
+            "3.142213164987e-282",
+            "4.6202199371337e-59",
+            "2.31010996856685e-59",
+            "9.324754620109615e227",
+            "7.8459735791271921e65",
+            "2.72104041512242479e217",
+            "6.802601037806061975e216",
+            "2.0505426358836677347e-202",
+            "8.36168422905420598437e-214",
+            "4.891559871276714924261e243",
+            // TBD more vectors
+
+            // Test of the special values NaN and Infinity
+            "inf", "-inf", "INF", "-INF", "Inf", "-Inf", "InF", "-InF",
+
+            "infinity", "-infinity",
+            "INFINITY", "-INFINITY",
+            "Infinity", "-Infinity",
+            "InFiNiTy", "-InFiNiTy",
+
+            "nan", "-nan", "NAN", "-NAN", "Nan", "-Nan", "NaN", "-NaN",
+
+            "nan()", "-nan()",
+            "NAN()", "-NAN()",
+            "Nan()", "-Nan()",
+            "NaN()", "-NaN()",
+
+            "nan(ananana_batmaaan)", "-nan(ananana_batmaaan)",
+            "NAN(ananana_batmaaan)", "-NAN(ananana_batmaaan)",
+            "Nan(ananana_batmaaan)", "-Nan(ananana_batmaaan)",
+            "NaN(ananana_batmaaan)", "-NaN(ananana_batmaaan)",
+        };
+
+        const size_t NUM_DATA = sizeof DATA / sizeof *DATA;
+
+        volatile double sink = 0.0; // Hoping to avoid optimization
+
+        typedef bdlb::NumericParseUtil Util;
+
+        // Not measured, to get the tight loop "recognized"
+        for (int wi = 0; wi < warmUpRuns; ++wi) {
+            for (size_t i = 0; i < NUM_DATA; ++i) {
+                double d;
+                if (Util::parseDouble(&d, DATA[i])) {
+                    sink += d;
+                }
+            }
+        }
+
+        bsls::Stopwatch sw;
+        sw.start(true);
+        for (int mi = 0; mi < measuredRuns; ++mi) {
+            for (size_t i = 0; i < NUM_DATA; ++i) {
+                double d;
+                if (Util::parseDouble(&d, DATA[i])) {
+                    sw.stop();
+                    sink += d;
+                    sw.start(true);
+                }
+            }
+        }
+        sw.stop();
+
+        const double allUserSec = sw.accumulatedUserTime();
+        const double allSystSec = sw.accumulatedSystemTime();
+        const double allWallSec = sw.accumulatedWallTime();
+
+        const double tblUserMilli = allUserSec * 1000 / measuredRuns;
+        const double tblSystMilli = allSystSec * 1000 / measuredRuns;
+        const double tblWallMilli = allWallSec * 1000 / measuredRuns;
+
+        const double callUserNano = tblUserMilli * 1000000 / NUM_DATA;
+        const double callSystNano = tblSystMilli * 1000000 / NUM_DATA;
+        const double callWallNano = tblWallMilli * 1000000 / NUM_DATA;
+
+        cout.precision(2);
+        cout << bsl::fixed;
+
+        cout << "Full run\n"
+                "    User:   " << allUserSec << " s\n"
+                "    System: " << allSystSec << " s\n"
+                "    Wall:   " << allWallSec << " s\n\n";
+
+        //cout << "Per repetition\n"
+        //        "    User:   " << tblUserMilli << " ms\n"
+        //        "    System: " << tblSystMilli << " ms\n"
+        //        "    Wall:   " << tblWallMilli << " ms\n\n";
+
+        cout << "Per call\n"
+                "    User:   " << callUserNano << " ns\n"
+                "    System: " << callSystNano << " ns\n"
+                "    Wall:   " << callWallNano << " ns\n\n";
+
+        exit(1); // To make sure we see the printout  -=*^ REMOVE THIS ^*=-
+
       } break;
       default: {
         cerr << "WARNING: CASE `" << test << "' NOT FOUND." << endl;
