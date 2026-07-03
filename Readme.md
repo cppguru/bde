@@ -1,3 +1,5 @@
+[![Alexandria doxygen](https://badges.dev.bloomberg.com/badge//Alexandria%20|%20Doxygen/blue?icon=fa-book-open)](https://alexandria.dev.bloomberg.com/bbgh/bde/bde/)
+
 BDE Libraries
 =============
 
