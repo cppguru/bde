@@ -450,10 +450,14 @@ BSLS_IDENT("$Id: $")
 
 #include <bsl_exception.h>     // `bsl::uncaught_exceptions`
 #include <bsl_iterator.h>
+#include <bsl_limits.h>        // `bsl::numeric_limits`
 #include <bsl_span.h>
 #include <bsl_string.h>
 #include <bsl_string_view.h>
-#include <bsl_type_traits.h>   // `bsl::enable_if`, `bsl::is_same`
+#include <bsl_type_traits.h>   // `bsl::enable_if`,   `bsl::is_integral`,
+                               // `bsl::is_same`,     `bsl::is_signed`,
+                               // `bsl::is_unsigned`, `bsl::is_convertible`,
+                               // `bsl::true_type`,   `bsl::false_type`.
 #include <bsl_unordered_map.h>
 #include <bsl_utility.h>       // `bsl::forward`
 #include <bsl_vector.h>
@@ -490,6 +494,24 @@ class JsonObject_MemberInitializer;
 class JsonArray {
 
   private:
+    // PRIVATE CLASS METHODS
+
+    // Return `true` if `0 <= value` and `false` otherwise.  This function is
+    // invoked when `t_INTEGRAL` is a signed type.
+    template <class t_INTEGRAL>
+    static bool isNonNegativeImp(t_INTEGRAL value, bsl::true_type is_signed);
+
+    // Return `true` (always). This function is invoked when `t_INTEGRAL` is
+    // an unsigned type.
+    template <class t_INTEGRAL>
+    static bool isNonNegativeImp(t_INTEGRAL value, bsl::false_type is_signed);
+
+    // Return `true` if `0 <= value` and `false` otherwise.  Note that this
+    // function avoids warnings arising from checking unsigned types for
+    // negativity.
+    template <class t_INTEGRAL>
+    static bool isNonNegative(t_INTEGRAL value);
+
     // PRIVATE TYPES
     typedef bsl::vector<Json> Elements;
 
@@ -531,41 +553,38 @@ class JsonArray {
     JsonArray();
     explicit JsonArray(bslma::Allocator *basicAllocator);
 
-    /// Create a `JsonArray` having the same value as the specified
-    /// `original` object.  Optionally specify `basicAllocator` to supply
-    /// memory.  If `basicAllocator` is not specified, the allocator
-    /// associated with `original` is propagated for use in the
-    /// newly-created `JsonArray`.
+    /// Create a `JsonArray` having the same value as the specified `original`
+    /// object.  Optionally specify `basicAllocator` to supply memory.  If
+    /// `basicAllocator` is not specified, the allocator associated with
+    /// `original` is propagated for use in the newly-created `JsonArray`.
     JsonArray(const JsonArray& original, bslma::Allocator *basicAllocator = 0);
 
-    /// Create a `JsonArray` having the same value as the specified
-    /// `original` object by moving (in constant time) the contents of
-    /// `original` to the new `JsonArray` object.  The allocator associated
-    /// with `original` is propagated for use in the newly-created
-    /// `JsonArray` object.  `original` is left in a valid but unspecified
-    /// state.
+    /// Create a `JsonArray` having the same value as the specified `original`
+    /// object by moving (in constant time) the contents of `original` to the
+    /// new `JsonArray` object.  The allocator associated with `original` is
+    /// propagated for use in the newly-created `JsonArray` object.  `original`
+    /// is left in a valid but unspecified state.
     JsonArray(bslmf::MovableRef<JsonArray> original) BSLS_KEYWORD_NOEXCEPT;
 
-    /// Create a `JsonArray` having the same value as the specified
-    /// `original` object that uses the specified `basicAllocator` to supply
-    /// memory.  The contents of `original` are moved (in constant time) to
-    /// the new `JsonArray` object if
-    /// `basicAllocator == original.allocator()`, and are move-inserted (in
-    /// linear time) using `basicAllocator` otherwise.  `original` is left
-    /// in a valid but unspecified state.
+    /// Create a `JsonArray` having the same value as the specified `original`
+    /// object that uses the specified `basicAllocator` to supply memory.  The
+    /// contents of `original` are moved (in constant time) to the new
+    /// `JsonArray` object if `basicAllocator == original.allocator()`, and are
+    /// move-inserted (in linear time) using `basicAllocator` otherwise.
+    /// `original` is left in a valid but unspecified state.
     JsonArray(bslmf::MovableRef<JsonArray>  original,
               bslma::Allocator             *basicAllocator);
 
     /// Create a `JsonArray` and insert (in order) each `Json` object in the
-    /// range starting at the specified `first` element, and ending
-    /// immediately before the specified `last` element.  Optionally specify
+    /// range starting at the specified `first` element, and ending immediately
+    /// before the specified `last` element.  Optionally specify
     /// `basicAllocator` used to supply memory.  If `basicAllocator` is not
     /// specified, the currently installed default allocator is used.  Throw
     /// `bsl::length_error` if the number of elements in `[first .. last)`
     /// exceeds the value returned by the method `maxSize`.  The (template
     /// parameter) type `t_INPUT_ITERATOR` shall meet the requirements of an
-    /// input iterator defined in the c++11 standard [24.2.3] providing
-    /// access to values of a type convertible to `Json`, and `Json` must be
+    /// input iterator defined in the c++11 standard [24.2.3] providing access
+    /// to values of a type convertible to `Json`, and `Json` must be
     /// `emplace-constructible` form `*i`, where `i` is a dereferenceable
     /// iterator in the range `[first .. last)`.  The behavior is undefined
     /// unless `first` and `last` refer to a range of valid values where
@@ -588,9 +607,8 @@ class JsonArray {
     // MANIPULATORS
 
     /// Assign to this object the value of the specified `rhs` object, and
-    /// return a reference providing modifiable access to this object.  If
-    /// an exception is thrown, `*this` is left in a valid but unspecified
-    /// state.
+    /// return a reference providing modifiable access to this object.  If an
+    /// exception is thrown, `*this` is left in a valid but unspecified state.
     JsonArray& operator=(const JsonArray& rhs);
 
     /// Assign to this object the value of the specified `rhs` object, and
@@ -603,11 +621,10 @@ class JsonArray {
     JsonArray& operator=(bslmf::MovableRef<JsonArray> rhs);
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
-    /// Assign to this array a sequence of `Json` objects, one for each
-    /// element (in order) of the specified `elements`.  Previous elements of
-    /// this array, if any, are destroyed.  Return a reference to `*this`.  If
-    /// an exception is thrown, `*this` is left in a valid but unspecified
-    /// state.
+    /// Assign to this array a sequence of `Json` objects, one for each element
+    /// (in order) of the specified `elements`.  Previous elements of this
+    /// array, if any, are destroyed.  Return a reference to `*this`.  If an
+    /// exception is thrown, `*this` is left in a valid but unspecified state.
     JsonArray& operator=(std::initializer_list<Json_Initializer> elements);
 #endif
 
@@ -618,119 +635,130 @@ class JsonArray {
 
     /// Assign to this object the value resulting from first clearing this
     /// `JsonArray` and then inserting (in order) each `Json` object in the
-    /// range starting at the specified `first` element, and ending
-    /// immediately before the specified `last` element.  Return a
-    /// non-`const` reference to this array.  If an exception is thrown,
-    /// `*this` is left in a valid but unspecified state.  Throw
-    /// `bsl::length_error` if `distance(first,last) > maxSize()`.  The
-    /// (template parameter) type `t_INPUT_ITERATOR` shall meet the
-    /// requirements of an input iterator defined in the c++11 standard
-    /// [24.2.3] providing access to values of a type convertible to `Json`,
-    /// and `Json` must be `emplace-constructible` form `*i`, where `i` is a
-    /// dereferenceable iterator in the range `[first .. last)`.  The
-    /// behavior is undefined unless `first` and `last` refer to a range of
-    /// valid values where `first` is at a position at or before `last`.
+    /// range starting at the specified `first` element, and ending immediately
+    /// before the specified `last` element.  Return a non-`const` reference to
+    /// this array.  If an exception is thrown, `*this` is left in a valid but
+    /// unspecified state.  Throw `bsl::length_error` if
+    /// `distance(first,last) > maxSize()`.  The (template parameter) type
+    /// `t_INPUT_ITERATOR` shall meet the requirements of an input iterator
+    /// defined in the c++11 standard [24.2.3] providing access to values of a
+    /// type convertible to `Json`, and `Json` must be `emplace-constructible`
+    /// form `*i`, where `i` is a dereferenceable iterator in the range
+    /// `[first .. last)`.  The behavior is undefined unless `first` and `last`
+    /// refer to a range of valid values where `first` is at a position at or
+    /// before `last`.
     template <class t_INPUT_ITERATOR>
     JsonArray& assign(t_INPUT_ITERATOR first, t_INPUT_ITERATOR last);
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
-    /// Assign to this array a sequence of `Json` objects, one for each
-    /// element (in order) of the specified `elements`.  Previous elements of
-    /// this array, if any, are destroyed.  Return a reference to `*this`.  If
-    /// an exception is thrown, `*this` is left in a valid but unspecified
-    /// state.
+    /// Assign to this array a sequence of `Json` objects, one for each element
+    /// (in order) of the specified `elements`.  Previous elements of this
+    /// array, if any, are destroyed.  Return a reference to `*this`.  If an
+    /// exception is thrown, `*this` is left in a valid but unspecified state.
     JsonArray& assign(std::initializer_list<Json_Initializer> elements);
 #endif
 
     // BDE_VERIFY pragma: -FABC01
 
-    /// Return an iterator providing modifiable access to the first element
-    /// in this `JsonArray`, or the past-the-end iterator if this `JsonArray`
-    /// is empty.
+    /// Return an iterator providing modifiable access to the first element in
+    /// this `JsonArray`, or the past-the-end iterator if this `JsonArray` is
+    /// empty.
     Iterator begin();
 
     /// Return the past-the-end iterator providing modifiable access to this
     /// `JsonArray`.
     Iterator end();
 
-    /// Return a reference providing modifiable access to the first element
-    /// in this `JsonArray`.  The behavior is undefined unless this
-    /// `JsonArray` is not empty.
+    /// Return a reference providing modifiable access to the first element in
+    /// this `JsonArray`.  The behavior is undefined unless this `JsonArray` is
+    /// not empty.
     Json& front();
 
-    /// Return a reference providing modifiable access to the last element
-    /// in this `JsonArray`.  The behavior is undefined unless this
-    /// `JsonArray` is not empty.
+    /// Return a reference providing modifiable access to the last element in
+    /// this `JsonArray`.  The behavior is undefined unless this `JsonArray` is
+    /// not empty.
     Json& back();
 
     // BDE_VERIFY pragma: +FABC01
 
-    /// Remove all elements from this `JsonArray` making its size 0.  Note
-    /// that although this `JsonArray` is empty after this method returns,
-    /// it preserves the same capacity it had before the method was called.
+    /// Remove all elements from this `JsonArray` making its size 0.  Note that
+    /// although this `JsonArray` is empty after this method returns, it
+    /// preserves the same capacity it had before the method was called.
     void clear();
 
-    /// Remove from this `JsonArray` the element at the specified `index`,
-    /// and return an iterator providing modifiable access to the element
-    /// immediately following the removed element, or the position returned
-    /// by the method `end` if the removed element was the last in the
-    /// sequence.  The behavior is undefined unless `index` is in the range
+    /// Remove from this `JsonArray` the element at the specified `index`, and
+    /// return an iterator providing modifiable access to the element
+    /// immediately following the removed element, or the position returned by
+    /// the method `end` if the removed element was the last in the sequence.
+    /// The behavior is undefined unless `index` is in the range
     /// `[0 .. size())`.
     Iterator erase(bsl::size_t index);
 
-    /// Remove from this `JsonArray` the element at the specified
-    /// `position`, and return an iterator providing modifiable access to
-    /// the element immediately following the removed element, or the
-    /// position returned by the method `end` if the removed element was the
-    /// last in the sequence.  The behavior is undefined unless `position`
-    /// is an iterator in the range `[cbegin() .. cend())`.
+    /// Remove from this `JsonArray` the element at the specified `position`,
+    /// and return an iterator providing modifiable access to the element
+    /// immediately following the removed element, or the position returned by
+    /// the method `end` if the removed element was the last in the sequence.
+    /// The behavior is undefined unless `position` is an iterator in the range
+    /// `[cbegin() .. cend())`.
     Iterator erase(ConstIterator position);
 
-    /// Remove from this `JsonArray` the sequence of elements starting at
-    /// the specified `first` position and ending before the specified
-    /// `last` position, and return an iterator providing modifiable access
-    /// to the element immediately following the last removed element, or
-    /// the position returned by the method `end` if the removed elements
-    /// were last in the sequence.  The behavior is undefined unless `first`
-    /// is an iterator in the range `[cbegin() .. cend()]` (both endpoints
-    /// included) and `last` is an iterator in the range `[first .. cend()]`
-    /// (both endpoints included).
+    /// Remove from this `JsonArray` the sequence of elements starting at the
+    /// specified `first` position and ending before the specified `last`
+    /// position, and return an iterator providing modifiable access to the
+    /// element immediately following the last removed element, or the position
+    /// returned by the method `end` if the removed elements were last in the
+    /// sequence.  The behavior is undefined unless `first` is an iterator in
+    /// the range `[cbegin() .. cend()]` (both endpoints included) and `last`
+    /// is an iterator in the range `[first .. cend()]` (both endpoints
+    /// included).
     Iterator erase(ConstIterator first, ConstIterator last);
 
     /// Insert at the specified `index` in this JsonArray a copy of the
     /// specified `json`, and return an iterator referring to the newly
     /// inserted element.  If an exception is thrown, `*this` is unaffected.
-    /// Throw `bsl::length_error` if `size() == maxSize()`.  The behavior is
-    /// undefined unless `index` is in the range `[0 .. size()]`.
-    Iterator insert(bsl::size_t index, const Json& json);
+    /// Throw `bsl::length_error` if `size() == maxSize()`.  The (template
+    /// parameter) type `t_INDEX` must be a non-`bool` integral type.  The
+    /// behavior is undefined unless `index` is in the range `[0 .. size()]`.
+    template <class t_INDEX>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            Iterator>::type
+    insert(t_INDEX index, const Json& json);
 
     /// Insert at the specified `index` in this JsonArray the specified
-    /// move-insertable `json`, and return an iterator referring to the
-    /// newly inserted element.  `json` is left in a valid but unspecified
-    /// state.  If an exception is thrown, `this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.  The behavior is
+    /// move-insertable `json`, and return an iterator referring to the newly
+    /// inserted element.  `json` is left in a valid but unspecified state.  If
+    /// an exception is thrown, `this` is unaffected.  Throw
+    /// `bsl::length_error` if `size() == maxSize()`.  The (template parameter)
+    /// type `t_INDEX` must be a non-`bool` integral type.  The behavior is
     /// undefined unless `index` is in the range `[0 .. size()]` (both
     /// endpoints included).
-    Iterator insert(bsl::size_t index, bslmf::MovableRef<Json> json);
+    template <class t_INDEX>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            Iterator>::type
+    insert(t_INDEX index, bslmf::MovableRef<Json> json);
 
     /// Insert at the specified `index` in this JsonArray the values in the
-    /// range starting at the specified `first` element, and ending
-    /// immediately before the specified `last` element.  Return an iterator
-    /// referring to the first newly inserted element.  If an exception is
-    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
-    /// `size() + distance(first, last) > maxSize()`.  The (template
+    /// range starting at the specified `first` element, and ending immediately
+    /// before the specified `last` element.  Return an iterator referring to
+    /// the first newly inserted element.  If an exception is thrown, `*this`
+    /// is unaffected.  Throw `bsl::length_error` if
+    /// `size() + distance(first, last) > maxSize()`.  The (template parameter)
+    /// type `t_INDEX` must be a non-`bool` integral type.  The (template
     /// parameter) type `t_INPUT_ITERATOR` shall meet the requirements of an
-    /// input iterator defined in the C++11 standard [24.2.3] providing
-    /// access to values of a type convertible to `Json`, and `Json` must be
-    /// `emplace-constructible` from `*i` into this `JsonArray`, where `i` is
-    /// a dereferenceable iterator in the range `[first .. last)`.  The
-    /// behavior is undefined unless `index` is in the range `[0 .. size()]`
-    /// (both endpoints included), and `first` and `last` refer to a range
-    /// of valid values where `first` is at a position at or before `last`.
-    template <class t_INPUT_ITERATOR>
-    Iterator insert(bsl::size_t    index,
-                    t_INPUT_ITERATOR first,
-                    t_INPUT_ITERATOR last);
+    /// input iterator defined in the C++11 standard [24.2.3] providing access
+    /// to values of a type convertible to `Json`, and `Json` must be
+    /// `emplace-constructible` from `*i` into this `JsonArray`, where `i` is a
+    /// dereferenceable iterator in the range `[first .. last)`.  The behavior
+    /// is undefined unless `index` is in the range `[0 .. size()]` (both
+    /// endpoints included), and `first` and `last` refer to a range of valid
+    /// values where `first` is at a position at or before `last`.
+    template <class t_INDEX, class t_INPUT_ITERATOR>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            Iterator>::type
+    insert(t_INDEX index, t_INPUT_ITERATOR first, t_INPUT_ITERATOR last);
 
     /// Insert at the specified `position` in this `JsonArray` a copy of the
     /// specified `json`, and return an iterator referring to the newly
@@ -754,16 +782,16 @@ class JsonArray {
     /// immediately before the specified `last` element.  Return an iterator
     /// referring to the first newly inserted element.  If an exception is
     /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
-    /// `size() + distance(first, last) > maxSize()`.  The (template
-    /// parameter) type `t_INPUT_ITERATOR` shall meet the requirements of an
-    /// input iterator defined in the C++11 standard [24.2.3] providing
-    /// access to values of a type convertible to `value_type`, and
-    /// `value_type` must be `emplace-constructible` from `*i` into this
-    /// JsonArray, where `i` is a dereferenceable iterator in the range
-    /// `[first .. last)`.  The behavior is undefined unless `position` is
-    /// an iterator in the range `[begin() .. end()]` (both endpoints
-    /// included), and `first` and `last` refer to a range of valid values
-    /// where `first` is at a position at or before `last`.
+    /// `size() + distance(first, last) > maxSize()`.  The (template parameter)
+    /// type `t_INPUT_ITERATOR` shall meet the requirements of an input
+    /// iterator defined in the C++11 standard [24.2.3] providing access to
+    /// values of a type convertible to `value_type`, and `value_type` must be
+    /// `emplace-constructible` from `*i` into this JsonArray, where `i` is a
+    /// dereferenceable iterator in the range `[first .. last)`.  The behavior
+    /// is undefined unless `position` is an iterator in the range
+    /// `[begin() .. end()]` (both endpoints included), and `first` and `last`
+    /// refer to a range of valid values where `first` is at a position at or
+    /// before `last`.
     template <class t_INPUT_ITERATOR>
     Iterator insert(ConstIterator    position,
                     t_INPUT_ITERATOR first,
@@ -774,28 +802,28 @@ class JsonArray {
     void popBack();
 
     /// Append to the end of this `JsonArray` a copy of the specified
-    /// `json`/`array`/`object`/`number` and return a non-`const` reference
-    /// to this array.  If an exception is thrown, `*this` is unaffected.
-    /// Throw `bsl::length_error` if `size() == maxSize()`.
+    /// `json`/`array`/`object`/`number` and return a non-`const` reference to
+    /// this array.  If an exception is thrown, `*this` is unaffected.  Throw
+    /// `bsl::length_error` if `size() == maxSize()`.
     JsonArray& pushBack(const Json&       json);
     JsonArray& pushBack(const JsonArray&  array);
     JsonArray& pushBack(const JsonObject& object);
     JsonArray& pushBack(const JsonNumber& number);
 
     /// Append to the end of this `JsonArray` the specified move-insertable
-    /// `json`/`array`/`object`/`number` and return a non-`const` reference
-    /// to this array.  `json`/`array`/`object`/`number` is left in a valid
-    /// but unspecified state.  If an exception is thrown, `*this` is
-    /// unaffected.  Throw `bsl::length_error` if `size() == maxSize()`.
+    /// `json`/`array`/`object`/`number` and return a non-`const` reference to
+    /// this array.  `json`/`array`/`object`/`number` is left in a valid but
+    /// unspecified state.  If an exception is thrown, `*this` is unaffected.
+    /// Throw `bsl::length_error` if `size() == maxSize()`.
     JsonArray& pushBack(bslmf::MovableRef<Json>       json);
     JsonArray& pushBack(bslmf::MovableRef<JsonArray>  array);
     JsonArray& pushBack(bslmf::MovableRef<JsonObject> object);
     JsonArray& pushBack(bslmf::MovableRef<JsonNumber> number);
 
-    /// Append to the end of this `JsonArray` a copy of the specified
-    /// `value` and return a non-`const` reference to this array.  If an
-    /// exception is thrown, `*this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.
+    /// Append to the end of this `JsonArray` a copy of the specified `value`
+    /// and return a non-`const` reference to this array.  If an exception is
+    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.
     JsonArray& pushBack(const JsonNull&    value);
     JsonArray& pushBack(bool               value);
     JsonArray& pushBack(int                value);
@@ -808,18 +836,18 @@ class JsonArray {
     JsonArray& pushBack(double             value);
     JsonArray& pushBack(bdldfp::Decimal64  value);
 
-    /// Append to the end of this `JsonArray` a copy of the specified
-    /// `string` and return a non-`const` reference to this array.  If an
-    /// exception is thrown, `*this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.
+    /// Append to the end of this `JsonArray` a copy of the specified `string`
+    /// and return a non-`const` reference to this array.  If an exception is
+    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.
     JsonArray& pushBack(const char              *string);
     JsonArray& pushBack(const bsl::string_view&  string);
 
     /// Append to the end of this `JsonArray` an element having the value of
     /// the specified `string` by moving (in constant time) the contents of
-    /// `string` to the new element and return a non-`const` reference to
-    /// this array.  `string` is left in a valid but unspecified state.
-    /// This function does not participate in overload resolution unless the
+    /// `string` to the new element and return a non-`const` reference to this
+    /// array.  `string` is left in a valid but unspecified state.  This
+    /// function does not participate in overload resolution unless the
     /// specified `t_STRING_TYPE` is `bsl::string`.  The behavior is undefined
     /// unless `string` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
     template <class t_STRING_TYPE>
@@ -837,38 +865,37 @@ class JsonArray {
     /// `count > maxSize()`.
     void resize(bsl::size_t count);
 
-    /// Change the size of this JsonArray to the specified `count`,
-    /// inserting copies of the specified `json` at the end if
-    /// `count > size()`.  If `count < size()`, the elements in the range
-    /// `[count .. size())` are erased `json` is ignored, and this method
-    /// does not throw.  If `count > size()` and an exception is thrown,
-    /// `*this` is unaffected.  Throw `bsl::length_error` if
-    /// `count > maxSize()`.
+    /// Change the size of this JsonArray to the specified `count`, inserting
+    /// copies of the specified `json` at the end if `count > size()`.  If
+    /// `count < size()`, the elements in the range `[count .. size())` are
+    /// erased `json` is ignored, and this method does not throw.  If
+    /// `count > size()` and an exception is thrown, `*this` is unaffected.
+    /// Throw `bsl::length_error` if `count > maxSize()`.
     void resize(bsl::size_t count, const Json& json);
 
                                   // Aspects
 
     /// Exchange the value of this object with that of the specified `other`
-    /// object.  If an exception is thrown, both objects are left in valid
-    /// but unspecified states.  This operation guarantees O[1] complexity.
-    /// The behavior is undefined unless this object was created with the
-    /// same allocator as `other`.
+    /// object.  If an exception is thrown, both objects are left in valid but
+    /// unspecified states.  This operation guarantees O[1] complexity.  The
+    /// behavior is undefined unless this object was created with the same
+    /// allocator as `other`.
     void swap(JsonArray& other);
 
     // ACCESSORS
 
     /// Return a reference providing non-modifiable access to the element at
-    /// the specified `index` in this `JsonArray`.  The behavior is
-    /// undefined unless `index < size()`.
+    /// the specified `index` in this `JsonArray`.  The behavior is undefined
+    /// unless `index < size()`.
     const Json& operator[](bsl::size_t index) const;
 
     // BDE_VERIFY pragma: -FABC01
 
     ConstIterator  begin() const BSLS_KEYWORD_NOEXCEPT;
 
-    /// Return an iterator providing non-modifiable access to the first
-    /// element in this `JsonArray`, and the past-the-end iterator if this
-    /// `JsonArray` is empty.
+    /// Return an iterator providing non-modifiable access to the first element
+    /// in this `JsonArray`, and the past-the-end iterator if this `JsonArray`
+    /// is empty.
     ConstIterator cbegin() const BSLS_KEYWORD_NOEXCEPT;
 
     ConstIterator  end() const BSLS_KEYWORD_NOEXCEPT;
@@ -877,14 +904,14 @@ class JsonArray {
     /// this `JsonArray`.
     ConstIterator cend() const BSLS_KEYWORD_NOEXCEPT;
 
-    /// Return a reference providing non-modifiable access to the first
-    /// element in this `JsonArray`.  The behavior is undefined unless this
-    /// `JsonArray` is not empty.
+    /// Return a reference providing non-modifiable access to the first element
+    /// in this `JsonArray`.  The behavior is undefined unless this `JsonArray`
+    /// is not empty.
     const Json& front() const;
 
-    /// Return a reference providing non-modifiable access to the last
-    /// element in this `JsonArray`.  The behavior is undefined unless this
-    /// `JsonArray` is not empty.
+    /// Return a reference providing non-modifiable access to the last element
+    /// in this `JsonArray`.  The behavior is undefined unless this `JsonArray`
+    /// is not empty.
     const Json& back() const;
 
     // BDE_VERIFY pragma: +FABC01
@@ -900,27 +927,26 @@ class JsonArray {
     /// Return the allocator used by this object to allocate memory.
     bslma::Allocator *allocator() const BSLS_KEYWORD_NOEXCEPT;
 
-    /// Return a theoretical upper bound on the largest number of elements
-    /// that this `JsonArray` could possibly hold.  Requests to create a
-    /// `JsonArray` longer than this number of elements are guaranteed to
-    /// raise a `bsl::length_error` exception.  Note that there is no
-    /// guarantee that the `JsonArray` can successfully grow to the returned
-    /// size, or even close to that size, without running out of resources.
+    /// Return a theoretical upper bound on the largest number of elements that
+    /// this `JsonArray` could possibly hold.  Requests to create a `JsonArray`
+    /// longer than this number of elements are guaranteed to raise a
+    /// `bsl::length_error` exception.  Note that there is no guarantee that
+    /// the `JsonArray` can successfully grow to the returned size, or even
+    /// close to that size, without running out of resources.
     bsl::size_t maxSize() const BSLS_KEYWORD_NOEXCEPT;
 
     /// Write the value of this object to the specified output `stream` in a
-    /// human-readable format, and return a reference to `stream`.
-    /// Optionally specify an initial indentation `level`, whose absolute
-    /// value is incremented recursively for nested objects.  If `level` is
-    /// specified, optionally specify `spacesPerLevel`, whose absolute value
-    /// indicates the number of spaces per indentation level for this and
-    /// all of its nested objects.  If `level` is negative, suppress
-    /// indentation of the first line.  If `spacesPerLevel` is negative,
-    /// format the entire output on one line, suppressing all but the
-    /// initial indentation (as governed by `level`).  If `stream` is not
-    /// valid on entry, this operation has no effect.  Note that this
-    /// human-readable format is not fully specified, and can change without
-    /// notice.
+    /// human-readable format, and return a reference to `stream`.  Optionally
+    /// specify an initial indentation `level`, whose absolute value is
+    /// incremented recursively for nested objects.  If `level` is specified,
+    /// optionally specify `spacesPerLevel`, whose absolute value indicates the
+    /// number of spaces per indentation level for this and all of its nested
+    /// objects.  If `level` is negative, suppress indentation of the first
+    /// line.  If `spacesPerLevel` is negative, format the entire output on one
+    /// line, suppressing all but the initial indentation (as governed by
+    /// `level`).  If `stream` is not valid on entry, this operation has no
+    /// effect.  Note that this human-readable format is not fully specified,
+    /// and can change without notice.
     bsl::ostream& print(bsl::ostream& stream,
                         int           level          = 0,
                         int           spacesPerLevel = 4) const;
@@ -928,36 +954,34 @@ class JsonArray {
 
 // FREE OPERATORS
 
-/// Write the value of the specified `object` to the specified output
-/// `stream` in a single-line format, and return a reference to `stream`.
-/// If `stream` is not valid on entry, this operation has no effect.  Note
-/// that this human-readable format is not fully specified, can change
-/// without notice, and is logically equivalent to:
+/// Write the value of the specified `object` to the specified output `stream`
+/// in a single-line format, and return a reference to `stream`.  If `stream`
+/// is not valid on entry, this operation has no effect.  Note that this
+/// human-readable format is not fully specified, can change without notice,
+/// and is logically equivalent to:
 /// ```
 /// print(stream, 0, -1);
 /// ```
 bsl::ostream& operator<<(bsl::ostream& stream, const JsonArray& object);
 
-/// Return `true` if the specified `lhs` and `rhs` objects have the same
-/// value, and `false` otherwise.  Two `JsonArray` objects `lhs` and `rhs`
-/// have the same value if they have the same number of elements, and each
-/// element in the ordered sequence of elements of `lhs` has the same value
-/// as the corresponding element in the ordered sequence of elements of
-/// `rhs`.
+/// Return `true` if the specified `lhs` and `rhs` objects have the same value,
+/// and `false` otherwise.  Two `JsonArray` objects `lhs` and `rhs` have the
+/// same value if they have the same number of elements, and each element in
+/// the ordered sequence of elements of `lhs` has the same value as the
+/// corresponding element in the ordered sequence of elements of `rhs`.
 bool operator==(const JsonArray& lhs, const JsonArray& rhs);
 
 /// Return `false` if the specified `lhs` and `rhs` objects have the same
-/// value, and `true` otherwise.  Two `JsonArray` objects `lhs` and `rhs`
-/// have the same value if they have the same number of elements, and each
-/// element in the ordered sequence of elements of `lhs` has the same value
-/// as the corresponding element in the ordered sequence of elements of
-/// `rhs`.
+/// value, and `true` otherwise.  Two `JsonArray` objects `lhs` and `rhs` have
+/// the same value if they have the same number of elements, and each element
+/// in the ordered sequence of elements of `lhs` has the same value as the
+/// corresponding element in the ordered sequence of elements of `rhs`.
 bool operator!=(const JsonArray& lhs, const JsonArray& rhs);
 
 /// Exchange the value of the specified `a` `JsonArray` with that of the
 /// specified `b` `JsonArray`.  This function provides the no-throw
-/// exception-safety guarantee.  This operation has O[1] complexity if `a`
-/// was created with the same allocator as `b`; otherwise, it has O[n+m]
+/// exception-safety guarantee.  This operation has O[1] complexity if `a` was
+/// created with the same allocator as `b`; otherwise, it has O[n+m]
 /// complexity, where n and m are the number of elements in `a` and `b`,
 /// respectively.
 void swap(JsonArray& a, JsonArray& b);
@@ -1013,52 +1037,50 @@ class JsonObject {
 
     // CREATORS
 
-    /// Create an empty `JsonObject`.  Optionally specify the
-    /// `basicAllocator` used to supply memory.  If `basicAllocator` is not
-    /// specified, the currently installed default allocator is used to
-    /// supply memory.
+    /// Create an empty `JsonObject`.  Optionally specify the `basicAllocator`
+    /// used to supply memory.  If `basicAllocator` is not specified, the
+    /// currently installed default allocator is used to supply memory.
     JsonObject();
     explicit JsonObject(bslma::Allocator *basicAllocator);
 
     /// Create a `JsonObject` having the same value as the specified
     /// `original`.  Optionally specify the `basicAllocator` used to supply
-    /// memory.  If `basicAllocator` is not specified, the currently
-    /// installed default allocator is used to supply memory.
+    /// memory.  If `basicAllocator` is not specified, the currently installed
+    /// default allocator is used to supply memory.
     JsonObject(const JsonObject&  original,
                bslma::Allocator  *basicAllocator = 0);
 
-    /// Create a `JsonObject` having the same value as the specified
-    /// `original` object by moving (in constant time) the contents of
-    /// `original` to the new `JsonObject`.  The allocator associated with
-    /// `original` is propagated for use in the newly-created `JsonObject`.
-    /// `original` is left in a valid but unspecified state.
+    /// Create a `JsonObject` having the same value as the specified `original`
+    /// object by moving (in constant time) the contents of `original` to the
+    /// new `JsonObject`.  The allocator associated with `original` is
+    /// propagated for use in the newly-created `JsonObject`.  `original` is
+    /// left in a valid but unspecified state.
     JsonObject(bslmf::MovableRef<JsonObject> original) BSLS_KEYWORD_NOEXCEPT;
 
     /// Create a `JsonObject` having the same value as the specified
-    /// `original`.  Use the specified `basicAllocator` to supply memory.
-    /// If `basicAllocator == original.allocator()` the value of `original`
-    /// will be moved (in constant time) to the newly-created `JsonObject`,
-    /// and `original` will be left in a valid but unspecified state.
-    /// Otherwise, `original` is copied, and `basicAllocator` used to supply
-    /// memory.
+    /// `original`.  Use the specified `basicAllocator` to supply memory.  If
+    /// `basicAllocator == original.allocator()` the value of `original` will
+    /// be moved (in constant time) to the newly-created `JsonObject`, and
+    /// `original` will be left in a valid but unspecified state.  Otherwise,
+    /// `original` is copied, and `basicAllocator` used to supply memory.
     JsonObject(bslmf::MovableRef<JsonObject>  original,
                bslma::Allocator              *basicAllocator);
 
-    /// Create an empty `JsonObject`, and then create a `Json` object for
-    /// each iterator in the range starting at the specified `first`
-    /// iterator and ending immediately before the specified `last`
-    /// iterator, by converting from the object referred to by each
-    /// iterator.  Insert into this `JsonObject` each such object, ignoring
-    /// those having a key that appears earlier in the sequence.  Optionally
-    /// specify a `basicAllocator` used to supply memory.  If
-    /// `basicAllocator` is not supplied, the currently installed default
-    /// allocator is used to supply memory.  The (template parameter) type
-    /// `t_INPUT_ITERATOR` shall meet the requirements of an input iterator
-    /// defined in the C++11 standard [24.2.3] providing access to values of
-    /// a type convertible to `Member`.  The behavior is undefined unless
-    /// `first` and `last` refer to a sequence of valid values where `first`
-    /// is at a position at or before `last`, and all keys of all `Member`
-    /// objects inserted are valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// Create an empty `JsonObject`, and then create a `Json` object for each
+    /// iterator in the range starting at the specified `first` iterator and
+    /// ending immediately before the specified `last` iterator, by converting
+    /// from the object referred to by each iterator.  Insert into this
+    /// `JsonObject` each such object, ignoring those having a key that appears
+    /// earlier in the sequence.  Optionally specify a `basicAllocator` used to
+    /// supply memory.  If `basicAllocator` is not supplied, the currently
+    /// installed default allocator is used to supply memory.  The (template
+    /// parameter) type `t_INPUT_ITERATOR` shall meet the requirements of an
+    /// input iterator defined in the C++11 standard [24.2.3] providing access
+    /// to values of a type convertible to `Member`.  The behavior is undefined
+    /// unless `first` and `last` refer to a sequence of valid values where
+    /// `first` is at a position at or before `last`, and all keys of all
+    /// `Member` objects inserted are valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
     template <class t_INPUT_ITERATOR>
     JsonObject(t_INPUT_ITERATOR  first,
                t_INPUT_ITERATOR  last,
@@ -1074,9 +1096,8 @@ class JsonObject {
     /// member initializer in `memberInitializers` is valid UTF-8 (see
     /// `bdlde::Utf8Util::isValid`).
     JsonObject(
-            std::initializer_list<JsonObject_MemberInitializer>
-                                                           memberInitializers,
-            bslma::Allocator                              *basicAllocator = 0);
+      std::initializer_list<JsonObject_MemberInitializer>  memberInitializers,
+      bslma::Allocator                                    *basicAllocator = 0);
                                                                     // IMPLICIT
 #endif  // BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
 
@@ -1088,16 +1109,16 @@ class JsonObject {
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `JsonObject`
-    /// if `allocator() == rhs.allocator()`; otherwise, all elements in this
-    /// container are either destroyed or move-assigned to, and each
-    /// additional element in `rhs`, if any, is move-inserted into this
-    /// `JsonObject`.  `rhs` is left in a valid but unspecified state.
+    /// contents of `rhs` are moved (in constant time) to this `JsonObject` if
+    /// `allocator() == rhs.allocator()`; otherwise, all elements in this
+    /// container are either destroyed or move-assigned to, and each additional
+    /// element in `rhs`, if any, is move-inserted into this `JsonObject`.
+    /// `rhs` is left in a valid but unspecified state.
     JsonObject& operator=(bslmf::MovableRef<JsonObject> rhs);
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
     /// Assign to this `JsonObject` members created (in order) from the
-    /// specified `memberInitializerss`.  List members having key values that
+    /// specified `memberInitializers`.  List members having key values that
     /// were previously inserted into the this object are ignored.  Previous
     /// members of this object, if any, are destroyed.  The behavior is
     /// undefined unless the key of each member in `members` is valid UTF-8
@@ -1109,10 +1130,10 @@ class JsonObject {
 
     /// Return a reference providing modifiable access to the `Json` object
     /// associated with the specified `key` in this `JsonObject`; if this
-    /// `JsonObject` does not already contain a `Json` object associated
-    /// with `key`, first insert a new default-constructed `Json` object
-    /// associated with `key`.  The behavior is undefined unless `key` is
-    /// valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// `JsonObject` does not already contain a `Json` object associated with
+    /// `key`, first insert a new default-constructed `Json` object associated
+    /// with `key`.  The behavior is undefined unless `key` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
     Json& operator[](const bsl::string_view& key);
 
     // BDE_VERIFY pragma: -FABC01
@@ -1129,79 +1150,75 @@ class JsonObject {
 
     // BDE_VERIFY pragma: +FABC01
 
-    /// Remove all entries from this `JsonObject`.  Note that this
-    /// `JsonObject` will be empty after calling this method, but allocated
-    /// memory may be retained for future use.
+    /// Remove all entries from this `JsonObject`.  Note that this `JsonObject`
+    /// will be empty after calling this method, but allocated memory may be
+    /// retained for future use.
     void clear() BSLS_KEYWORD_NOEXCEPT;
 
-    /// Remove from this `JsonObject` the `Member` object having the
-    /// specified `key`, if it exists, and return 1; otherwise (there is no
-    /// object with a key equivalent to `key` in this `JsonObject`) return 0
-    /// with no other effect.  This method invalidates only iterators and
-    /// references to the removed element and previously saved values of the
-    /// `end()` iterator, and preserves the relative order of the elements
-    /// not removed.
+    /// Remove from this `JsonObject` the `Member` object having the specified
+    /// `key`, if it exists, and return 1; otherwise (there is no object with a
+    /// key equivalent to `key` in this `JsonObject`) return 0 with no other
+    /// effect.  This method invalidates only iterators and references to the
+    /// removed element and previously saved values of the `end()` iterator,
+    /// and preserves the relative order of the elements not removed.
     bsl::size_t erase(const bsl::string_view& key);
 
-    /// Remove from this unordered map the `value_type` object at the
-    /// specified `position`, and return an iterator referring to the
-    /// element immediately following the removed element, or to the
-    /// past-the-end position if the removed element was the last element in
-    /// the sequence of elements maintained by this unordered map.  This
-    /// method invalidates only iterators and references to the removed
-    /// element and previously saved values of the `end()` iterator, and
-    /// preserves the relative order of the elements not removed.  The
-    /// behavior is undefined unless `position` refers to a `value_type`
-    /// object in this unordered map.
+    /// Remove from this unordered map the `value_type` object at the specified
+    /// `position`, and return an iterator referring to the element immediately
+    /// following the removed element, or to the past-the-end position if the
+    /// removed element was the last element in the sequence of elements
+    /// maintained by this unordered map.  This method invalidates only
+    /// iterators and references to the removed element and previously saved
+    /// values of the `end()` iterator, and preserves the relative order of the
+    /// elements not removed.  The behavior is undefined unless `position`
+    /// refers to a `value_type` object in this unordered map.
     Iterator erase(     Iterator position);
     Iterator erase(ConstIterator position);
 
-    /// Return an iterator providing modifiable access to the `Member`
-    /// object in this `JsonObject` with a key equivalent to the specified
-    /// `key`, if such an entry exists, and the past-the-end iterator
-    /// (`end`) otherwise.
+    /// Return an iterator providing modifiable access to the `Member` object
+    /// in this `JsonObject` with a key equivalent to the specified `key`, if
+    /// such an entry exists, and the past-the-end iterator (`end`) otherwise.
     Iterator find(const bsl::string_view& key);
 
     /// Insert the specified `member` into this `JsonObject` if the key (the
-    /// `first` element) of the object referred to by `value` does not
-    /// already exist in this `JsonObject`; otherwise, this method has no
-    /// effect.  Return a `pair` whose `first` member is an iterator
-    /// referring to the (possibly newly inserted) `value_type` object in
-    /// this `JsonObject` whose key is equivalent to that of the object to
-    /// be inserted, and whose `second` member is `true` if a new value was
-    /// inserted, and `false` if a value having an equivalent key was
-    /// already present.  The behavior is undefined unless `member.first` is
-    /// valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// `first` element) of the object referred to by `value` does not already
+    /// exist in this `JsonObject`; otherwise, this method has no effect.
+    /// Return a `pair` whose `first` member is an iterator referring to the
+    /// (possibly newly inserted) `value_type` object in this `JsonObject`
+    /// whose key is equivalent to that of the object to be inserted, and whose
+    /// `second` member is `true` if a new value was inserted, and `false` if a
+    /// value having an equivalent key was already present.  The behavior is
+    /// undefined unless `member.first` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
     bsl::pair<Iterator, bool> insert(const Member& member);
 
     /// Insert the specified `member` into this `JsonObject` if the key (the
-    /// `first` element) of the object referred to by `member` does not
-    /// already exist in this `JsonObject`; otherwise, this method has no
-    /// effect.  Return a `pair` whose `first` member is an iterator
-    /// referring to the (possibly newly inserted) `member` object in this
-    /// `JsonObject` whose key is the equivalent to that of the object to be
-    /// inserted, and whose `second` member is `true` if a new value was
-    /// inserted, and `false` otherwise.  The behavior is undefined unless
-    /// `member.first` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// `first` element) of the object referred to by `member` does not already
+    /// exist in this `JsonObject`; otherwise, this method has no effect.
+    /// Return a `pair` whose `first` member is an iterator referring to the
+    /// (possibly newly inserted) `member` object in this `JsonObject` whose
+    /// key is the equivalent to that of the object to be inserted, and whose
+    /// `second` member is `true` if a new value was inserted, and `false`
+    /// otherwise.  The behavior is undefined unless `member.first` is valid
+    /// UTF-8 (see `bdlde::Utf8Util::isValid`).
     bsl::pair<Iterator, bool> insert(bslmf::MovableRef<Member> member);
 
-    /// Create a `Member` object for each iterator in the range starting at
-    /// the specified `first` iterator and ending immediately before the
-    /// specified `last` iterator, by converting from the object referred to
-    /// by each iterator.  Insert into this `JsonObject` each such object
-    /// whose key is not already contained.  Return a non-`const` reference
-    /// to this `JsonObject`.  The (template parameter) type
-    /// `t_INPUT_ITERATOR` shall meet the requirements of an input iterator
-    /// defined in the C++11 standard [24.2.3] providing access to values of
-    /// a type convertible to `Member`.  The behavior is undefined unless
-    /// `first` and `last` refer to a sequence of value values where `first`
-    /// is at a position at or before `last`.  The behavior is undefined
-    /// unless the keys of all `Member` objects inserted are valid UTF-8
-    /// (see `bdlde::Utf8Util::isValid`).
+    /// Create a `Member` object for each iterator in the range starting at the
+    /// specified `first` iterator and ending immediately before the specified
+    /// `last` iterator, by converting from the object referred to by each
+    /// iterator.  Insert into this `JsonObject` each such object whose key is
+    /// not already contained.  Return a non-`const` reference to this
+    /// `JsonObject`.  The (template parameter) type `t_INPUT_ITERATOR` shall
+    /// meet the requirements of an input iterator defined in the C++11
+    /// standard [24.2.3] providing access to values of a type convertible to
+    /// `Member`.  The behavior is undefined unless `first` and `last` refer to
+    /// a sequence of value values where `first` is at a position at or before
+    /// `last`.  The behavior is undefined unless the keys of all `Member`
+    /// objects inserted are valid UTF-8 (see `bdlde::Utf8Util::isValid`).
     template <class t_INPUT_ITERATOR>
-    typename bsl::enable_if<!bsl::is_convertible<t_INPUT_ITERATOR,
-                                                 bsl::string_view>::value,
-                            JsonObject&>::type
+    typename bsl::enable_if<
+        !bsl::is_convertible<t_INPUT_ITERATOR, bsl::string_view>::value,
+        JsonObject&>::type
     insert(t_INPUT_ITERATOR first, t_INPUT_ITERATOR last);
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
@@ -1215,32 +1232,32 @@ class JsonObject {
                                                         memberInitializers);
 #endif
 
-    /// Insert into this `JsonObject` a `Member` constructed from the
-    /// specified `key` and the specified `value`, respectively, if `key`
-    /// does not already exist in this `JsonObject`; otherwise, this method
-    /// has no effect.  Return a `pair` whose `first` member is an iterator
-    /// referring to the (possibly newly inserted) `Member` object in this
-    /// `JsonObject` whose key is the equivalent to that of the object to be
-    /// inserted, and whose `second` member is `true` if a new value was
-    /// inserted, and `false` otherwise.  The behavior is undefined unless
-    /// `key` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// Insert into this `JsonObject` a `Member` constructed from the specified
+    /// `key` and the specified `value`, respectively, if `key` does not
+    /// already exist in this `JsonObject`; otherwise, this method has no
+    /// effect.  Return a `pair` whose `first` member is an iterator referring
+    /// to the (possibly newly inserted) `Member` object in this `JsonObject`
+    /// whose key is the equivalent to that of the object to be inserted, and
+    /// whose `second` member is `true` if a new value was inserted, and
+    /// `false` otherwise.  The behavior is undefined unless `key` is valid
+    /// UTF-8 (see `bdlde::Utf8Util::isValid`).
     template <class t_VALUE>
     bsl::pair<Iterator, bool> insert(
                              const bsl::string_view&                    key,
                              BSLS_COMPILERFEATURES_FORWARD_REF(t_VALUE) value);
 
     /// Exchange the value of this object with that of the specified `other`
-    /// object.  If an exception is thrown, both objects are left in valid
-    /// but unspecified states.  This operation guarantees O[1] complexity.
-    /// The behavior is undefined unless this object was created with the
-    /// same allocator as `other`.
+    /// object.  If an exception is thrown, both objects are left in valid but
+    /// unspecified states.  This operation guarantees O[1] complexity.  The
+    /// behavior is undefined unless this object was created with the same
+    /// allocator as `other`.
     void swap(JsonObject& other);
 
     // ACCESSORS
 
-    /// Return a reference providing non-modifiable access to the `Json`
-    /// object associated with the specified `key` in this `JsonObject`.
-    /// The behavior is undefined unless `key` is valid UTF-8 (see
+    /// Return a reference providing non-modifiable access to the `Json` object
+    /// associated with the specified `key` in this `JsonObject`.  The behavior
+    /// is undefined unless `key` is valid UTF-8 (see
     /// `bdlde::Utf8Util::isValid`) and this `JsonObject` already contains a
     /// `Json` object associated with `key`.
     const Json& operator[](const bsl::string_view& key) const;
@@ -1248,23 +1265,21 @@ class JsonObject {
     // BDE_VERIFY pragma: -FABC01
 
     /// Return an iterator providing non-modifiable access to the first
-    /// `Member` object in the sequence of `Member` objects maintained by
-    /// this `JsonObject`, or the `end` iterator if this `JsonObject` is
-    /// empty.
+    /// `Member` object in the sequence of `Member` objects maintained by this
+    /// `JsonObject`, or the `end` iterator if this `JsonObject` is empty.
     ConstIterator  begin() const BSLS_KEYWORD_NOEXCEPT;
     ConstIterator cbegin() const BSLS_KEYWORD_NOEXCEPT;
 
-    /// Return an iterator providing non-modifiable access to the
-    /// past-the-end position in the sequence of `Member` objects maintained
-    /// by this `JsonObject`.
+    /// Return an iterator providing non-modifiable access to the past-the-end
+    /// position in the sequence of `Member` objects maintained by this
+    /// `JsonObject`.
     ConstIterator  end() const BSLS_KEYWORD_NOEXCEPT;
     ConstIterator cend() const BSLS_KEYWORD_NOEXCEPT;
 
     // BDE_VERIFY pragma: +FABC01
 
-    /// Return `true` if there is a `Member` object in this `JsonObject`
-    /// with a key equivalent to the specified `key`, and return `false`
-    /// otherwise.
+    /// Return `true` if there is a `Member` object in this `JsonObject` with a
+    /// key equivalent to the specified `key`, and return `false` otherwise.
     bool contains(const bsl::string_view& key) const;
 
     /// Return `true` if this `JsonObject` contains no elements, and `false`
@@ -1273,8 +1288,8 @@ class JsonObject {
 
     /// Return an iterator providing non-modifiable access to the `Member`
     /// object in this `JsonObject` with a key equivalent to the specified
-    /// `key`, if such an entry exists, and the past-the-end iterator
-    /// (`end`) otherwise.
+    /// `key`, if such an entry exists, and the past-the-end iterator (`end`)
+    /// otherwise.
     ConstIterator find(const bsl::string_view& key) const;
 
     /// Return the number of elements in this `JsonObject`.
@@ -1286,18 +1301,17 @@ class JsonObject {
     bslma::Allocator *allocator() const BSLS_KEYWORD_NOEXCEPT;
 
     /// Write the value of this object to the specified output `stream` in a
-    /// human-readable format, and return a reference to `stream`.
-    /// Optionally specify an initial indentation `level`, whose absolute
-    /// value is incremented recursively for nested objects.  If `level` is
-    /// specified, optionally specify `spacesPerLevel`, whose absolute value
-    /// indicates the number of spaces per indentation level for this and
-    /// all of its nested objects.  If `level` is negative, suppress
-    /// indentation of the first line.  If `spacesPerLevel` is negative,
-    /// format the entire output on one line, suppressing all but the
-    /// initial indentation (as governed by `level`).  If `stream` is not
-    /// valid on entry, this operation has no effect.  Note that this
-    /// human-readable format is not fully specified, and can change without
-    /// notice.
+    /// human-readable format, and return a reference to `stream`.  Optionally
+    /// specify an initial indentation `level`, whose absolute value is
+    /// incremented recursively for nested objects.  If `level` is specified,
+    /// optionally specify `spacesPerLevel`, whose absolute value indicates the
+    /// number of spaces per indentation level for this and all of its nested
+    /// objects.  If `level` is negative, suppress indentation of the first
+    /// line.  If `spacesPerLevel` is negative, format the entire output on one
+    /// line, suppressing all but the initial indentation (as governed by
+    /// `level`).  If `stream` is not valid on entry, this operation has no
+    /// effect.  Note that this human-readable format is not fully specified,
+    /// and can change without notice.
     bsl::ostream& print(bsl::ostream& stream,
                         int           level          = 0,
                         int           spacesPerLevel = 4) const;
@@ -1305,34 +1319,34 @@ class JsonObject {
 
 // FREE OPERATORS
 
-/// Write the value of the specified `object` to the specified output
-/// `stream` in a single-line format, and return a reference to `stream`.
-/// If `stream` is not valid on entry, this operation has no effect.  Note
-/// that this human-readable format is not fully specified, can change
-/// without notice, and is logically equivalent to:
+/// Write the value of the specified `object` to the specified output `stream`
+/// in a single-line format, and return a reference to `stream`.  If `stream`
+/// is not valid on entry, this operation has no effect.  Note that this
+/// human-readable format is not fully specified, can change without notice,
+/// and is logically equivalent to:
 /// ```
 /// print(stream, 0, -1);
 /// ```
 bsl::ostream& operator<<(bsl::ostream& stream, const JsonObject& object);
 
-/// Return `true` if the specified `lhs` and `rhs` objects have the same
-/// value, and `false` otherwise.  Two `JsonObject` objects have the same
-/// value if they have the same number of `Member` objects, and for each
-/// `Member` object that is contained in `lhs` there is a key-value pair
-/// contained in `rhs` having the same value, and vice versa.
+/// Return `true` if the specified `lhs` and `rhs` objects have the same value,
+/// and `false` otherwise.  Two `JsonObject` objects have the same value if
+/// they have the same number of `Member` objects, and for each `Member` object
+/// that is contained in `lhs` there is a key-value pair contained in `rhs`
+/// having the same value, and vice versa.
 bool operator==(const JsonObject& lhs, const JsonObject& rhs);
 
 /// Return `false` if the specified `lhs` and `rhs` objects have the same
-/// value, and `true` otherwise.  Two `JsonObject` objects have the same
-/// value if they have the same number of `Member` objects, and for each
-/// `Member` object that is contained in `lhs` there is a key-value pair
-/// contained in `rhs` having the same value, and vice versa.
+/// value, and `true` otherwise.  Two `JsonObject` objects have the same value
+/// if they have the same number of `Member` objects, and for each `Member`
+/// object that is contained in `lhs` there is a key-value pair contained in
+/// `rhs` having the same value, and vice versa.
 bool operator!=(const JsonObject& lhs, const JsonObject& rhs);
 
 /// Exchange the value of the specified `a` `JsonObject` with that of the
 /// specified `b` `JsonObject`.  This function provides the no-throw
-/// exception-safety guarantee.  This operation has O[1] complexity if `a`
-/// was created with the same allocator as `b`; otherwise, it has O[n+m]
+/// exception-safety guarantee.  This operation has O[1] complexity if `a` was
+/// created with the same allocator as `b`; otherwise, it has O[n+m]
 /// complexity, where n and m are the number of elements in `a` and `b`,
 /// respectively.
 void swap(JsonObject& a, JsonObject& b);
@@ -1341,8 +1355,8 @@ void swap(JsonObject& a, JsonObject& b);
                                  // class Json
                                  // ==========
 
-/// This type is designed to be a thin wrapper around a variant of the
-/// possible JSON types, using a BDE-style variant interface.
+/// This type is designed to be a thin wrapper around a variant of the possible
+/// JSON types, using a BDE-style variant interface.
 class Json {
 
     // PRIVATE TYPES
@@ -1379,15 +1393,15 @@ class Json {
 
     /// Create a `Json` object having the type (and the singleton value) of
     /// `JsonNull`.  Optionally specify the `basicAllocator` used to supply
-    /// memory.  If `basicAllocator` is not specified, the currently
-    /// installed default allocator is used to supply memory.
+    /// memory.  If `basicAllocator` is not specified, the currently installed
+    /// default allocator is used to supply memory.
     Json();
     explicit Json(bslma::Allocator *basicAllocator);
 
     /// Create a `Json` object having the same value as the specified
     /// `original`.  Optionally specify the `basicAllocator` used to supply
-    /// memory.  If `basicAllocator` is not specified, the currently
-    /// installed default allocator is used to supply memory.
+    /// memory.  If `basicAllocator` is not specified, the currently installed
+    /// default allocator is used to supply memory.
     Json(const Json& original, bslma::Allocator *basicAllocator = 0);
 
     /// Create a `Json` object having the same value as the specified
@@ -1401,23 +1415,23 @@ class Json {
     /// `original`.  Use the specified `basicAllocator` to supply memory.
     Json(bslmf::MovableRef<Json> original, bslma::Allocator *basicAllocator);
 
-    /// Create a `Json` object having the type `bool` and the same value as
-    /// the specified `boolean`.  Optionally specify the `basicAllocator`
-    /// used to supply memory.  If `basicAllocator` is not specified, the
-    /// currently installed default allocator is used to supply memory.
+    /// Create a `Json` object having the type `bool` and the same value as the
+    /// specified `boolean`.  Optionally specify the `basicAllocator` used to
+    /// supply memory.  If `basicAllocator` is not specified, the currently
+    /// installed default allocator is used to supply memory.
     explicit Json(bool boolean, bslma::Allocator *basicAllocator = 0);
 
-    /// Create a `Json` object having the type `JsonNull` and the same value
-    /// as the specified `null`.  Optionally specify the `basicAllocator`
-    /// used to supply memory.  If `basicAllocator` is not specified, the
-    /// currently installed default allocator is used to supply memory.
+    /// Create a `Json` object having the type `JsonNull` and the same value as
+    /// the specified `null`.  Optionally specify the `basicAllocator` used to
+    /// supply memory.  If `basicAllocator` is not specified, the currently
+    /// installed default allocator is used to supply memory.
     explicit Json(const JsonNull& null, bslma::Allocator *basicAllocator = 0);
 
     /// Create a `Json` object having the type `JsonArray`/`JsonObject`/
-    /// `JsonNumber` and the value of the specified
-    /// `array`/`object`/`number`.  Optionally specify `basicAllocator`
-    /// used to supply memory.  If `basicAllocator` is not specified, the
-    /// currently installed default allocator is used to supply memory.
+    /// `JsonNumber` and the value of the specified `array`/`object`/`number`.
+    /// Optionally specify `basicAllocator` used to supply memory.  If
+    /// `basicAllocator` is not specified, the currently installed default
+    /// allocator is used to supply memory.
              Json(const JsonArray&   array,
                   bslma::Allocator  *basicAllocator = 0);           // IMPLICIT
              Json(const JsonObject&  object,
@@ -1426,14 +1440,13 @@ class Json {
                   bslma::Allocator  *basicAllocator = 0);
 
     /// Create a `Json` object having the type `JsonArray`/`JsonObject`/
-    /// `JsonNumber` and the value of the specified `array`/`object`/
-    /// `number` object by moving the contents of `array`/`object`/`number`
-    /// to the new object.  Optionally specify `basicAllocator` used to
-    /// supply memory.  If `basicAllocator` is not specified, the allocator
-    /// associated with `array`/`object`/`number` is propagated for use in
-    /// the newly-created `Json` object.  The allocator or `array`/`object`/
-    /// `number` is unchanged and is otherwise left in (valid) unspecified
-    /// state.
+    /// `JsonNumber` and the value of the specified `array`/`object`/ `number`
+    /// object by moving the contents of `array`/`object`/`number` to the new
+    /// object.  Optionally specify `basicAllocator` used to supply memory.  If
+    /// `basicAllocator` is not specified, the allocator associated with
+    /// `array`/`object`/`number` is propagated for use in the newly-created
+    /// `Json` object.  The allocator or `array`/`object`/ `number` is
+    /// unchanged and is otherwise left in (valid) unspecified state.
              Json(bslmf::MovableRef<JsonArray>   array,
                   bslma::Allocator              *basicAllocator = 0);
                                                                     // IMPLICIT
@@ -1448,8 +1461,8 @@ class Json {
 
     /// Create a `Json` object having the same structure as the specified
     /// `initializer`.  Optionally specify the `basicAllocator` used to supply
-    /// memory.  If `basicAllocator` is not specified, the currently
-    /// installed default allocator is used to supply memory.
+    /// memory.  If `basicAllocator` is not specified, the currently installed
+    /// default allocator is used to supply memory.
     template <class t_JSON_INITIALIZER>
     Json(const t_JSON_INITIALIZER&  initializer,
          bslma::Allocator        *basicAllocator = 0,
@@ -1485,12 +1498,12 @@ class Json {
     // BDE_VERIFY pragma: -FD06 `string` and `bsl::string` are too similar
     // BDE_VERIFY pragma: -FD07 `string` and `bsl::string` are too similar
 
-    /// Create a `Json` object having the type `bsl::string` and the same
-    /// value as the specified `string`.  Optionally specify the
-    /// `basicAllocator` used to supply memory.  If `basicAllocator` is not
-    /// specified, the currently installed default allocator is used to
-    /// supply memory.  The behavior is undefined unless `string` is valid
-    /// UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// Create a `Json` object having the type `bsl::string` and the same value
+    /// as the specified `string`.  Optionally specify the `basicAllocator`
+    /// used to supply memory.  If `basicAllocator` is not specified, the
+    /// currently installed default allocator is used to supply memory.  The
+    /// behavior is undefined unless `string` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
     explicit Json(const char              *string,
                   bslma::Allocator        *basicAllocator = 0);
     explicit Json(const bsl::string_view&  string,
@@ -1498,16 +1511,16 @@ class Json {
 
     // BDE_VERIFY pragma: -IND01 DEDUCE macro confuses bde_verify
 
-    /// Create a `Json` object having the type `bsl::string` and the same
-    /// value as the specified `string` by moving (in constant time) the
-    /// contents of `string` to the new `Json` object.  Optionally specify
-    /// the `basicAllocator` used to supply memory.  If `basicAllocator` is
-    /// not specified, the allocator associated with `string` is propagated
-    /// for use in the newly-created `Json` object.  `string` is left in a
-    /// valid but unspecified state.  This function does not participate in
-    /// overload resolution unless the specified `t_STRING_TYPE` is
-    /// `bsl::string`.  The behavior is undefined unless `string` is valid
-    /// UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// Create a `Json` object having the type `bsl::string` and the same value
+    /// as the specified `string` by moving (in constant time) the contents of
+    /// `string` to the new `Json` object.  Optionally specify the
+    /// `basicAllocator` used to supply memory.  If `basicAllocator` is not
+    /// specified, the allocator associated with `string` is propagated for use
+    /// in the newly-created `Json` object.  `string` is left in a valid but
+    /// unspecified state.  This function does not participate in overload
+    /// resolution unless the specified `t_STRING_TYPE` is `bsl::string`.  The
+    /// behavior is undefined unless `string` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
     template <class t_STRING_TYPE>
     Json(BSLMF_MOVABLEREF_DEDUCE(t_STRING_TYPE)  string,
          bslma::Allocator                       *basicAllocator = 0,
@@ -1524,21 +1537,21 @@ class Json {
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// value currently held by this variant is destroyed if that value's
-    /// type is not the same as the type held by the `rhs` object.
+    /// value currently held by this variant is destroyed if that value's type
+    /// is not the same as the type held by the `rhs` object.
     Json& operator=(const Json& rhs);
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `Json` object
-    /// if `allocator() == rhs.allocator()`; otherwise they are copied.
-    /// `rhs` is left in a valid but unspecified state.
+    /// contents of `rhs` are moved (in constant time) to this `Json` object if
+    /// `allocator() == rhs.allocator()`; otherwise they are copied.  `rhs` is
+    /// left in a valid but unspecified state.
     Json& operator=(bslmf::MovableRef<Json> rhs);
 
-    /// Assign to this object a value of type `JsonNumber` initialized from
-    /// the specified `rhs`, and return a reference providing modifiable
-    /// access to this object.  The value currently held by this object (if
-    /// any) is destroyed if that value's type is not `JsonNumber`.
+    /// Assign to this object a value of type `JsonNumber` initialized from the
+    /// specified `rhs`, and return a reference providing modifiable access to
+    /// this object.  The value currently held by this object (if any) is
+    /// destroyed if that value's type is not `JsonNumber`.
     Json& operator=(const JsonNumber&  rhs);
     Json& operator=(int                rhs);
     Json& operator=(unsigned int       rhs);
@@ -1552,29 +1565,28 @@ class Json {
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `Json` object
-    /// if `allocator() == rhs.allocator()`; otherwise, they are copied.
-    /// `rhs` is left in a valid but unspecified state.  The value currently
-    /// held by this object (if any) is destroyed if that value's type is
-    /// not `JsonNumber`.
+    /// contents of `rhs` are moved (in constant time) to this `Json` object if
+    /// `allocator() == rhs.allocator()`; otherwise, they are copied.  `rhs` is
+    /// left in a valid but unspecified state.  The value currently held by
+    /// this object (if any) is destroyed if that value's type is not
+    /// `JsonNumber`.
     Json& operator=(bslmf::MovableRef<JsonNumber> rhs);
 
     /// Assign to this object a value of type `bsl::string` initialized from
-    /// the specified `rhs`, and return a reference providing modifiable
-    /// access to this object.  The value currently held by this object (if
-    /// any) is destroyed if that value's type is not `bsl::string`.  The
-    /// behavior is undefined unless `rhs` is valid UTF-8 (see
-    /// `bdlde::Utf8Util::isValid`).
+    /// the specified `rhs`, and return a reference providing modifiable access
+    /// to this object.  The value currently held by this object (if any) is
+    /// destroyed if that value's type is not `bsl::string`.  The behavior is
+    /// undefined unless `rhs` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
     Json& operator=(const char              *rhs);
     Json& operator=(const bsl::string_view&  rhs);
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `Json` object
-    /// if `allocator() == rhs.allocator()`; otherwise, they are copied.
-    /// `rhs` is left in a valid but unspecified state.  The value currently
-    /// held by this object (if any) is destroyed if that value's type is
-    /// not `bsl::string`.  This function does not participate in overload
+    /// contents of `rhs` are moved (in constant time) to this `Json` object if
+    /// `allocator() == rhs.allocator()`; otherwise, they are copied.  `rhs` is
+    /// left in a valid but unspecified state.  The value currently held by
+    /// this object (if any) is destroyed if that value's type is not
+    /// `bsl::string`.  This function does not participate in overload
     /// resolution unless the specified `t_STRING_TYPE` is `bsl::string`.  The
     /// behavior is undefined unless `rhs` is valid UTF-8 (see
     /// `bdlde::Utf8Util::isValid`).
@@ -1584,39 +1596,39 @@ class Json {
     operator=(BSLMF_MOVABLEREF_DEDUCE(t_STRING_TYPE) rhs);
 
     /// Assign to this object a value of type `bool` initialized from the
-    /// specified `rhs`, and return a reference providing modifiable access
-    /// to this object.  The value currently held by this object (if any) is
-    /// destroyed if that value's type is not `bsl::string`.
+    /// specified `rhs`, and return a reference providing modifiable access to
+    /// this object.  The value currently held by this object (if any) is
+    /// destroyed if that value's type is not `bool`.
     Json& operator=(bool rhs);
 
-    /// Assign to this object a value of type `JsonObject` initialized from
-    /// the specified `rhs`, and return a reference providing modifiable
-    /// access to this object.  The value currently held by this object (if
-    /// any) is destroyed if that value's type is not `JsonObject`.
+    /// Assign to this object a value of type `JsonObject` initialized from the
+    /// specified `rhs`, and return a reference providing modifiable access to
+    /// this object.  The value currently held by this object (if any) is
+    /// destroyed if that value's type is not `JsonObject`.
     Json& operator=(const JsonObject& rhs);
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `Json` object
-    /// if `allocator() == rhs.allocator()`; otherwise, they are copied.
-    /// `rhs` is left in a valid but unspecified state.  The value currently
-    /// held by this object (if any) is destroyed if that value's type is
-    /// not `JsonObject`.
+    /// contents of `rhs` are moved (in constant time) to this `Json` object if
+    /// `allocator() == rhs.allocator()`; otherwise, they are copied.  `rhs` is
+    /// left in a valid but unspecified state.  The value currently held by
+    /// this object (if any) is destroyed if that value's type is not
+    /// `JsonObject`.
     Json& operator=(bslmf::MovableRef<JsonObject> rhs);
 
-    /// Assign to this object a value of type `JsonArray` initialized from
-    /// the specified `rhs`, and return a reference providing modifiable
-    /// access to this object.  The value currently held by this object (if
-    /// any) is destroyed if that value's type is not `JsonArray`.
+    /// Assign to this object a value of type `JsonArray` initialized from the
+    /// specified `rhs`, and return a reference providing modifiable access to
+    /// this object.  The value currently held by this object (if any) is
+    /// destroyed if that value's type is not `JsonArray`.
     Json& operator=(const JsonArray& rhs);
 
     /// Assign to this object the value of the specified `rhs` object, and
     /// return a reference providing modifiable access to this object.  The
-    /// contents of `rhs` are moved (in constant time) to this `Json` object
-    /// if `allocator() == rhs.allocator()`; otherwise, they are copied.
-    /// `rhs` is left in a valid but unspecified state.  The value currently
-    /// held by this object (if any) is destroyed if that value's type is
-    /// not `JsonArray`.
+    /// contents of `rhs` are moved (in constant time) to this `Json` object if
+    /// `allocator() == rhs.allocator()`; otherwise, they are copied.  `rhs` is
+    /// left in a valid but unspecified state.  The value currently held by
+    /// this object (if any) is destroyed if that value's type is not
+    /// `JsonArray`.
     Json& operator=(bslmf::MovableRef<JsonArray> rhs);
 
     /// Assign to this object the singleton value of type `JsonNull`, and
@@ -1626,26 +1638,26 @@ class Json {
     Json& operator=(const JsonNull& );
 
     /// Assign to this object the singleton value of type `JsonNull`, and
-    /// return a reference providing modifiable access to this object.
-    /// `rhs` is left in a valid but unspecified state.  The value currently
-    /// held by this object (if any) is destroyed if that value's type is
-    /// not `JsonNull`.
+    /// return a reference providing modifiable access to this object.  `rhs`
+    /// is left in a valid but unspecified state.  The value currently held by
+    /// this object (if any) is destroyed if that value's type is not
+    /// `JsonNull`.
     Json& operator=(bslmf::MovableRef<JsonNull>);
 
     /// Create an instance of type `JsonArray` in this object, using the
-    /// allocator currently held by this object to supply memory, and return
-    /// a reference providing modifiable access to the created instance.
-    /// Optionally specify `array` to initialize the `JsonArray` created.
-    /// This method first destroys the current value held by this object
-    /// (even if the type currently held is `JsonArray`).
+    /// allocator currently held by this object to supply memory, and return a
+    /// reference providing modifiable access to the created instance.
+    /// Optionally specify `array` to initialize the `JsonArray` created.  This
+    /// method first destroys the current value held by this object (even if
+    /// the type currently held is `JsonArray`).
     JsonArray& makeArray();
     JsonArray& makeArray(const JsonArray&             array);
     JsonArray& makeArray(bslmf::MovableRef<JsonArray> array);
 
-    /// Create an instance of type `bool` in this object and return a
-    /// reference providing modifiable access to the created instance.
-    /// Optionally specify `boolean` to initialize the `bool` created.  This
-    /// method first destroys the current value held by this object.
+    /// Create an instance of type `bool` in this object and return a reference
+    /// providing modifiable access to the created instance.  Optionally
+    /// specify `boolean` to initialize the `bool` created.  This method first
+    /// destroys the current value held by this object.
     bool& makeBoolean();
     bool& makeBoolean(bool boolean);
 
@@ -1654,21 +1666,21 @@ class Json {
     void makeNull();
 
     /// Create an instance of type `JsonNumber` in this object, using the
-    /// allocator currently held by this object to supply memory, and return
-    /// a reference providing modifiable access to the created instance.
+    /// allocator currently held by this object to supply memory, and return a
+    /// reference providing modifiable access to the created instance.
     /// Optionally specify `number` to initialize the `JsonNumber` created.
-    /// This method first destroys the current value held by this object
-    /// (even if the type currently held is `JsonNumber`).
+    /// This method first destroys the current value held by this object (even
+    /// if the type currently held is `JsonNumber`).
     JsonNumber& makeNumber();
     JsonNumber& makeNumber(const JsonNumber&             number);
     JsonNumber& makeNumber(bslmf::MovableRef<JsonNumber> number);
 
     /// Create an instance of type `JsonObject` in this object, using the
-    /// allocator currently held by this object to supply memory, and return
-    /// a reference providing modifiable access to the created instance.
+    /// allocator currently held by this object to supply memory, and return a
+    /// reference providing modifiable access to the created instance.
     /// Optionally specify `object` to initialize the `JsonObject` created.
-    /// This method first destroys the current value held by this object
-    /// (even if the type currently held is `JsonObject`).
+    /// This method first destroys the current value held by this object (even
+    /// if the type currently held is `JsonObject`).
     JsonObject& makeObject();
     JsonObject& makeObject(const JsonObject&             object);
     JsonObject& makeObject(bslmf::MovableRef<JsonObject> object);
@@ -1677,23 +1689,22 @@ class Json {
     // BDE_VERIFY pragma: -FD07 `string` and `bsl::string` are too similar
 
     /// Create an instance of type `bsl::string` in this object, using the
-    /// allocator currently held by this object to supply memory.
-    /// Optionally specify `string` to initialize the `bsl::string` created.
-    /// This method first destroys the current value held by this object
-    /// (even if the type currently held is `bsl::string`).  The behavior is
-    /// undefined unless `string` is valid UTF-8 (see
-    /// `bdlde::Utf8Util::isValid`).
+    /// allocator currently held by this object to supply memory.  Optionally
+    /// specify `string` to initialize the `bsl::string` created.  This method
+    /// first destroys the current value held by this object (even if the type
+    /// currently held is `bsl::string`).  The behavior is undefined unless
+    /// `string` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
     void makeString(const char              *string);
     void makeString(const bsl::string_view&  string);
 
     /// Create an instance of type `bsl::string` in this object, using the
-    /// allocator currently held by this object to supply memory.
-    /// Optionally specify `string` to initialize the `bsl::string` created.
-    /// This method first destroys the current value held by this object
-    /// (even if the type currently held is `bsl::string`).  This function
-    /// does not participate in overload resolution unless the specified
-    /// `t_STRING_TYPE` is `bsl::string`.  The behavior is undefined unless
-    /// `string` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    /// allocator currently held by this object to supply memory.  Optionally
+    /// specify `string` to initialize the `bsl::string` created.  This method
+    /// first destroys the current value held by this object (even if the type
+    /// currently held is `bsl::string`).  This function does not participate
+    /// in overload resolution unless the specified `t_STRING_TYPE` is
+    /// `bsl::string`.  The behavior is undefined unless `string` is valid
+    /// UTF-8 (see `bdlde::Utf8Util::isValid`).
     template <class t_STRING_TYPE>
     typename bsl::enable_if<bsl::is_same<t_STRING_TYPE,
                                          bsl::string>::value>::type
@@ -1757,28 +1768,178 @@ class Json {
     /// Return a reference providing modifiable access to the `Json` object
     /// associated with the specified `key` in the `JsonObject` held by this
     /// object.  If `isNull()`, then type is changed to object.  If the
-    /// `JsonObject` does not already contain a `Json` object associated
-    /// with `key`, first insert a new default-constructed `Json` object
-    /// associated with `key`.  The behavior is undefined unless
-    /// `isObject()` or `isNull()`.
+    /// `JsonObject` does not already contain a `Json` object associated with
+    /// `key`, first insert a new default-constructed `Json` object associated
+    /// with `key`.  The behavior is undefined unless `isObject()` or
+    /// `isNull()`.
     Json& operator[](const bsl::string_view& key);
 
     /// Return a reference providing modifiable access to the element at the
-    /// specified `index` in the `JsonArray` held by this object.  The
-    /// behavior is undefined unless `isArray()` returns true and
+    /// specified `index` in the `JsonArray` held by this object.  The behavior
+    /// is undefined unless `isArray()` returns true and
     /// `index < theArray().size()`.
     Json& operator[](bsl::size_t index);
 
 // BDE_VERIFY pragma: -FABC01 // not in order
 
-                        // `pushBack` methods
+                        // `JsonObject::insert` methods
 
-    /// Append to the end of this `Json` object's array a copy of the
-    /// specified `json`/`array`/`object`/`number` and return a non-`const`
-    /// reference to this object.  If `isNull()`, then the type is changed
-    /// to array.  If an exception is thrown, `*this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.  The behavior is
-    /// undefined unless `isArray()` or `isNull()`.
+    /// Insert the specified `member` into the `JsonObject` held by this object
+    /// if the key of `member` does not already exist; otherwise, this method
+    /// has no effect.  Return a `pair` whose `first` member is an iterator
+    /// referring to the (possibly newly inserted) `Member` object whose key
+    /// matches, and whose `second` member is `true` if a new value was
+    /// inserted, and `false` otherwise.  If `isNull()`, then the type is
+    /// changed to object.  The behavior is undefined unless `isObject()` or
+    /// `isNull()`, and unless `member.first` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
+    bsl::pair<JsonObject::Iterator, bool> insert(
+                                             const JsonObject::Member& member);
+
+    /// Insert the specified move-insertable `member` into the `JsonObject`
+    /// held by this object if the key of `member` does not already exist;
+    /// otherwise, this method has no effect.  Return a `pair` whose `first`
+    /// member is an iterator referring to the (possibly newly inserted)
+    /// `Member` object whose key matches, and whose `second` member is `true`
+    /// if a new value was inserted, and `false` otherwise.  `member` is left
+    /// in a valid but unspecified state.  If `isNull()`, then the type is
+    /// changed to object.  The behavior is undefined unless `isObject()` or
+    /// `isNull()`, and unless `member.first` is valid UTF-8 (see
+    /// `bdlde::Utf8Util::isValid`).
+    bsl::pair<JsonObject::Iterator, bool> insert(
+                                    bslmf::MovableRef<JsonObject::Member>
+                                                                       member);
+
+    /// Insert into the `JsonObject` held by this object each `Member` in the
+    /// range `[first, last)` whose key is not already present.  Return a
+    /// non-`const` reference to this object.  If `isNull()`, then the type is
+    /// changed to object.  The behavior is undefined unless `isObject()` or
+    /// `isNull()`, `first` and `last` refer to a valid sequence, and the keys
+    /// of all members are valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    template <class t_INPUT_ITERATOR>
+    typename bsl::enable_if<!bsl::is_convertible<t_INPUT_ITERATOR,
+                                                 bsl::string_view>::value,
+                            Json&>::type
+    insert(t_INPUT_ITERATOR first, t_INPUT_ITERATOR last);
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
+    /// Insert into the `JsonObject` held by this object members created from
+    /// the specified `memberInitializers`, ignoring those whose keys already
+    /// exist.  Return a non-`const` reference to this object.  If `isNull()`,
+    /// then the type is changed to object.  The behavior is undefined unless
+    /// `isObject()` or `isNull()`, and unless the keys of all members are
+    /// valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    Json& insert(std::initializer_list<JsonObject_MemberInitializer>
+                                                          memberInitializers);
+#endif
+
+    /// Insert into the `JsonObject` held by this object a `Member` constructed
+    /// from the specified `key` and `value` if `key` does not already exist;
+    /// otherwise, this method has no effect.  Return a `pair` whose `first`
+    /// member is an iterator referring to the (possibly newly inserted)
+    /// `Member` object whose key matches, and whose `second` member is `true`
+    /// if a new value was inserted, and `false` otherwise.  If `isNull()`,
+    /// then the type is changed to object.  The (template parameter) type
+    /// `t_STRING_VIEW` must be convertible to `bsl::string_view`.  The
+    /// behavior is undefined unless `isObject()` or `isNull()`, and unless
+    /// `key` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
+    template <class t_VALUE, class t_STRING_VIEW>
+    typename bsl::enable_if<!bsl::is_integral   <t_STRING_VIEW>::value
+                          && bsl::is_convertible<t_STRING_VIEW,
+                                                 bsl::string_view>::value,
+                             bsl::pair<JsonObject::Iterator, bool> >::type
+    insert(const t_STRING_VIEW&                       key,
+           BSLS_COMPILERFEATURES_FORWARD_REF(t_VALUE) value);
+
+                        // `JsonArray::insert` methods
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `index` a copy of the specified `json`, and return an iterator
+    /// referring to the newly inserted element.  If `isNull()`, then the type
+    /// is changed to array and `index` must be `0`.  If an exception is
+    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.  The (template parameter) type `t_INDEX` must be
+    /// a non-`bool` integral type.  The behavior is undefined unless
+    /// `isArray()` or `isNull()`, and unless `index` is in the range
+    /// `[0 .. size()]`.
+    template <class t_INDEX>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            JsonArray::Iterator>::type
+    insert(t_INDEX index, const Json& json);
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `index` the specified move-insertable `json`, and return an iterator
+    /// referring to the newly inserted element.  `json` is left in a valid but
+    /// unspecified state.  If `isNull()`, then the type is changed to array
+    /// and `index` must be `0`.  If an exception is thrown, `*this` is
+    /// unaffected.  Throw `bsl::length_error` if `size() == maxSize()`.  The
+    /// (template parameter) type `t_INDEX` must be a non-`bool` integral type.
+    /// The behavior is undefined unless `isArray()` or `isNull()`, and unless
+    /// `index` is in the range `[0 .. size()]`.
+    template <class t_INDEX>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            JsonArray::Iterator>::type
+    insert(t_INDEX index, bslmf::MovableRef<Json> json);
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `index` the values in the range `[first, last)`, and return an iterator
+    /// referring to the first newly inserted element.  If `isNull()`, then the
+    /// type is changed to array and `index` must be `0`.  If an exception is
+    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() + distance(first, last) > maxSize()`.  The (template parameter)
+    /// type `t_INDEX` must be a non-`bool` integral type.  The behavior is
+    /// undefined unless `isArray()` or `isNull()`, and unless `index` is in
+    /// the range `[0 .. size()]`.
+    template <class t_INDEX, class t_INPUT_ITERATOR>
+    typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                        && !bsl::is_same<t_INDEX, bool>::value,
+                            JsonArray::Iterator>::type
+    insert(t_INDEX          index,
+           t_INPUT_ITERATOR first,
+           t_INPUT_ITERATOR last);
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `position` a copy of the specified `json`, and return an iterator
+    /// referring to the newly inserted element.  If an exception is thrown,
+    /// `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.  The behavior is undefined unless `isArray()`
+    /// and `position` is in the range
+    /// `[theArray().begin() .. theArray().end()]`.
+    JsonArray::Iterator insert(JsonArray::ConstIterator position,
+                               const Json&              json);
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `position` the specified move-insertable `json`, and return an iterator
+    /// referring to the newly inserted element.  `json` is left in a valid but
+    /// unspecified state.  If an exception is thrown, `*this` is unaffected.
+    /// Throw `bsl::length_error` if `size() == maxSize()`.  The behavior is
+    /// undefined unless `isArray()` and `position` is in the range
+    /// `[theArray().begin() .. theArray().end()]`.
+    JsonArray::Iterator insert(JsonArray::ConstIterator position,
+                               bslmf::MovableRef<Json>  json);
+
+    /// Insert into the `JsonArray` held by this object at the specified
+    /// `position` the values in the range `[first, last)`, and return an
+    /// iterator referring to the first newly inserted element.  If an
+    /// exception is thrown, `*this` is unaffected.  Throw `bsl::length_error`
+    /// if `size() + distance(first, last) > maxSize()`.  The behavior is
+    /// undefined unless `isArray()` and `position` is in the range
+    /// `[theArray().begin() .. theArray().end()]`.
+    template <class t_INPUT_ITERATOR>
+    JsonArray::Iterator insert(JsonArray::ConstIterator position,
+                               t_INPUT_ITERATOR         first,
+                               t_INPUT_ITERATOR         last);
+
+                        // `JsonArray::pushBack` methods
+
+    /// Append to the end of this `Json` object's array a copy of the specified
+    /// `json`/`array`/`object`/`number` and return a non-`const` reference to
+    /// this object.  If `isNull()`, then the type is changed to array.  If an
+    /// exception is thrown, `*this` is unaffected.  Throw `bsl::length_error`
+    /// if `size() == maxSize()`.  The behavior is undefined unless `isArray()`
+    /// or `isNull()`.
     Json& pushBack(const Json&       json);
     Json& pushBack(const JsonArray&  array);
     Json& pushBack(const JsonObject& object);
@@ -1786,23 +1947,22 @@ class Json {
 
     /// Append to the end of this `Json` object's array the specified
     /// move-insertable `json`/`array`/`object`/`number` and return a
-    /// non-`const` reference to this object.
-    /// `json`/`array`/`object`/`number` is left in a valid but unspecified
-    /// state.  If `isNull`, then the type is changed to array.  If an
-    /// exception is thrown, `*this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.  The behavior is
+    /// non-`const` reference to this object.  `json`/`array`/`object`/`number`
+    /// is left in a valid but unspecified state.  If `isNull`, then the type
+    /// is changed to array.  If an exception is thrown, `*this` is unaffected.
+    /// Throw `bsl::length_error` if `size() == maxSize()`.  The behavior is
     /// undefined unless `isArray()` or `isNull()`.
     Json& pushBack(bslmf::MovableRef<Json>       json);
     Json& pushBack(bslmf::MovableRef<JsonArray>  array);
     Json& pushBack(bslmf::MovableRef<JsonObject> object);
     Json& pushBack(bslmf::MovableRef<JsonNumber> number);
 
-    /// Append to the end of this `Json` object's array a copy of the
-    /// specified `value` and return a non-`const` reference to this object.
-    /// If `isNull()`, then type is changed to array.  If an exception is
-    /// thrown, `*this` is unaffected.  Throw `bsl::length_error` if
-    /// `size() == maxSize()`.  The behavior is undefined unless `isArray()`
-    /// or `isNull()`.
+    /// Append to the end of this `Json` object's array a copy of the specified
+    /// `value` and return a non-`const` reference to this object.  If
+    /// `isNull()`, then type is changed to array.  If an exception is thrown,
+    /// `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.  The behavior is undefined unless `isArray()` or
+    /// `isNull()`.
     Json& pushBack(const JsonNull&    value);
     Json& pushBack(bool               value);
     Json& pushBack(int                value);
@@ -1815,24 +1975,24 @@ class Json {
     Json& pushBack(double             value);
     Json& pushBack(bdldfp::Decimal64  value);
 
-    /// Append to the end of this `Json` object's array a copy of the
-    /// specified `string` and return a non-`const` reference to this
-    /// object.  If `isNull`, then type is changed to array.  If an
-    /// exception is thrown, `*this` is unaffected.  Throw
-    /// `bsl::length_error` if `size() == maxSize()`.  The behavior is
-    /// undefined unless `isArray()` or `isNull`.
+    /// Append to the end of this `Json` object's array a copy of the specified
+    /// `string` and return a non-`const` reference to this object.  If
+    /// `isNull`, then type is changed to array.  If an exception is thrown,
+    /// `*this` is unaffected.  Throw `bsl::length_error` if
+    /// `size() == maxSize()`.  The behavior is undefined unless `isArray()` or
+    /// `isNull()`.
     Json& pushBack(const char              *string);
     Json& pushBack(const bsl::string_view&  string);
 
-    /// Append to the end of this `Json` object's array an element having
-    /// value of the specified `string` by moving (in constant time) the
-    /// contents of `string` to the new element and return a non-`const`
-    /// reference to this object.  If `isNull()`, then the type is changed
-    /// to array.  `string` is left in a valid but unspecified state.  This
-    /// function does not participate in overload resolution unless the
-    /// specified `t_STRING_TYPE` is `bsl::string`.  The behavior is undefined
-    /// unless `string` is valid UTF-8 (see `bdlde::Utf8Util::isValid`).
-    /// The behavior is undefined unless `isArray()` or `isNull()`.
+    /// Append to the end of this `Json` object's array an element having value
+    /// of the specified `string` by moving (in constant time) the contents of
+    /// `string` to the new element and return a non-`const` reference to this
+    /// object.  If `isNull()`, then the type is changed to array.  `string` is
+    /// left in a valid but unspecified state.  This function does not
+    /// participate in overload resolution unless the specified `t_STRING_TYPE`
+    /// is `bsl::string`.  The behavior is undefined unless `string` is valid
+    /// UTF-8 (see `bdlde::Utf8Util::isValid`).  The behavior is undefined
+    /// unless `isArray()` or `isNull()`.
     template <class t_STRING_TYPE>
     typename bsl::enable_if<bsl::is_same<t_STRING_TYPE,
                                          bsl::string>::value,
@@ -1840,9 +2000,8 @@ class Json {
     pushBack(BSLMF_MOVABLEREF_DEDUCE(t_STRING_TYPE) string);
 
     /// Return the result (having `RETURN_TYPE`) of invoking the specified
-    /// `visitor` (callable) object on this `Json` object.  `visitor` must
-    /// be callable as if it provides the following overloads of
-    /// `operator()`:
+    /// `visitor` (callable) object on this `Json` object.  `visitor` must be
+    /// callable as if it provides the following overloads of `operator()`:
     /// ```
     /// RETURN_TYPE operator()(JsonObject  *object );
     /// RETURN_TYPE operator()(JsonArray   *array  );
@@ -1865,9 +2024,9 @@ class Json {
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
     /// Return the result (having a deduced type) of invoking the specified
-    /// `visitor` (callable) object on this `Json` object.  `visitor` must
-    /// be callable as if it provides the following overloads of
-    /// `operator()`, any of which can have deduced return types:
+    /// `visitor` (callable) object on this `Json` object.  `visitor` must be
+    /// callable as if it provides the following overloads of `operator()`, any
+    /// of which can have deduced return types:
     /// ```
     /// decltype(auto) operator()(JsonObject  *object );
     /// decltype(auto) operator()(JsonArray   *array  );
@@ -1891,33 +2050,32 @@ class Json {
 
                         // Aspects
 
-    /// Exchange the value of this with that of the specified `other`.  If
-    /// an exception is thrown, both objects are left in valid but
-    /// unspecified states.  This operation guarantees O[1] complexity.  The
-    /// behavior is undefined unless this object was created with the same
-    /// allocator as `other`.
+    /// Exchange the value of this with that of the specified `other`.  If an
+    /// exception is thrown, both objects are left in valid but unspecified
+    /// states.  This operation guarantees O[1] complexity.  The behavior is
+    /// undefined unless this object was created with the same allocator as
+    /// `other`.
     void swap(Json& other);
 
     // ACCESSORS
 
-    /// Load into the specified `result` the integer value of the value of
-    /// type `JsonNumber` held by this object.  Return 0 on success,
-    /// `JsonNumber::k_OVERFLOW` if `value` is larger than can be
-    /// represented by `result`, `JsonNumber::k_UNDERFLOW` if `value` is
-    /// smaller than can be represented by `result`, and
-    /// `JsonNumber::k_NOT_INTEGRAL` if `value` is not an integral number
-    /// (i.e., there is a fractional part).  For underflow, `result` will be
-    /// loaded with the minimum representable value, for overflow, `result`
-    /// will be loaded with the maximum representable value, for
-    /// non-integral values `result` will be loaded with the integer part of
-    /// `value` (truncating the value to the nearest integer).  If the
-    /// result is not an integer and also either overflows or underflows, it
-    /// is treated as an overflow or underflow (respectively).  Note that
-    /// this operation returns a status value (unlike similar floating point
-    /// conversions) because typically it is an error if a conversion to an
-    /// integer results in an inexact value.  The behavior is undefined
-    /// unless `isNumber()` returns true.  Also note that on all supported
-    /// platforms `bsls::Types::Int64` and `bsls::Types::Uint64` are,
+    /// Load into the specified `result` the integer value of the value of type
+    /// `JsonNumber` held by this object.  Return 0 on success,
+    /// `JsonNumber::k_OVERFLOW` if `value` is larger than can be represented
+    /// by `result`, `JsonNumber::k_UNDERFLOW` if `value` is smaller than can
+    /// be represented by `result`, and `JsonNumber::k_NOT_INTEGRAL` if `value`
+    /// is not an integral number (i.e., there is a fractional part).  For
+    /// underflow, `result` will be loaded with the minimum representable
+    /// value, for overflow, `result` will be loaded with the maximum
+    /// representable value, for non-integral values `result` will be loaded
+    /// with the integer part of `value` (truncating the value to the nearest
+    /// integer).  If the result is not an integer and also either overflows or
+    /// underflows, it is treated as an overflow or underflow (respectively).
+    /// Note that this operation returns a status value (unlike similar
+    /// floating point conversions) because typically it is an error if a
+    /// conversion to an integer results in an inexact value.  The behavior is
+    /// undefined unless `isNumber()` returns true.  Also note that on all
+    /// supported platforms `bsls::Types::Int64` and `bsls::Types::Uint64` are,
     /// respectively, aliases for `long long` and `unsigned long long`.
     int asShort    (short               *result) const;
     int asInt      (int                 *result) const;
@@ -1931,8 +2089,8 @@ class Json {
     int asUint64   (bsls::Types::Uint64 *result) const;
 
     /// Return the closest floating point representation to the value of the
-    /// type `JsonNumber` held by this object.  If this number is outside
-    /// the representable range, return +INF or -INF (as appropriate).  The
+    /// type `JsonNumber` held by this object.  If this number is outside the
+    /// representable range, return +INF or -INF (as appropriate).  The
     /// behavior is undefined unless `isNumber()` returns true.
     float             asFloat()     const;
     double            asDouble()    const;
@@ -1941,15 +2099,14 @@ class Json {
 // BDE_VERIFY pragma: +FABC01 // not in order
 
     /// Load the specified `result` with the closest floating point
-    /// representation to the value of type `JsonNumber` held by this
-    /// object, even if a non-zero status is returned.  Return 0 if this
-    /// number can be represented exactly, and return
-    /// `JsonNumber::k_INEXACT` if `value` cannot be represented exactly.
-    /// If this number is outside the representable range, load `result`
-    /// with +INF or -INF (as appropriate).  A number can be represented
-    /// exactly as a `Decimal64` if, for the significand and exponent,
-    /// `abs(significand) <= 9,999,999,999,999,999` and
-    /// `-398 <= exponent <= 369`.  The behavior is undefined unless
+    /// representation to the value of type `JsonNumber` held by this object,
+    /// even if a non-zero status is returned.  Return 0 if this number can be
+    /// represented exactly, and return `JsonNumber::k_INEXACT` if `value`
+    /// cannot be represented exactly.  If this number is outside the
+    /// representable range, load `result` with +INF or -INF (as appropriate).
+    /// A number can be represented exactly as a `Decimal64` if, for the
+    /// significand and exponent, `abs(significand) <= 9,999,999,999,999,999`
+    /// and `-398 <= exponent <= 369`.  The behavior is undefined unless
     /// `isNumber()` returns `true`;
     int asDecimal64Exact(bdldfp::Decimal64 *result) const;
 
@@ -1961,58 +2118,58 @@ class Json {
     /// false otherwise.
     bool isBoolean() const;
 
-    /// Return true if the value held by this object is of type `JsonNull`,
-    /// and false otherwise.
+    /// Return true if the value held by this object is of type `JsonNull`, and
+    /// false otherwise.
     bool isNull() const;
 
-    /// Return true if the value held by this object is of type
-    /// `JsonNumber`, and false otherwise.
+    /// Return true if the value held by this object is of type `JsonNumber`,
+    /// and false otherwise.
     bool isNumber() const;
 
-    /// Return true if the value held by this object is of type
-    /// `JsonObject`, and false otherwise.
+    /// Return true if the value held by this object is of type `JsonObject`,
+    /// and false otherwise.
     bool isObject() const;
 
-    /// Return true if the value held by this object is of type
-    /// `bsl::string`, and false otherwise.
+    /// Return true if the value held by this object is of type `bsl::string`,
+    /// and false otherwise.
     bool isString() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonArray` held by this object.  The behavior is undefined
-    /// unless `isArray()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonArray` held by this object.  The behavior is undefined unless
+    /// `isArray()` returns true.
     const JsonArray& theArray() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `boolean` held by this object.  The behavior is undefined
-    /// unless `isBoolean()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `boolean` held by this object.  The behavior is undefined unless
+    /// `isBoolean()` returns true.
     const bool& theBoolean() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonNull` held by this object.  The behavior is undefined
-    /// unless `isNull()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonNull` held by this object.  The behavior is undefined unless
+    /// `isNull()` returns true.
     const JsonNull& theNull() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonNumber` held by this object.  The behavior is undefined
-    /// unless `isNumber()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonNumber` held by this object.  The behavior is undefined unless
+    /// `isNumber()` returns true.
     const JsonNumber& theNumber() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonObject` held by this object.  The behavior is undefined
-    /// unless `isObject()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonObject` held by this object.  The behavior is undefined unless
+    /// `isObject()` returns true.
     const JsonObject& theObject() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonString` held by this object.  The behavior is undefined
-    /// unless `isString()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonString` held by this object.  The behavior is undefined unless
+    /// `isString()` returns true.
     const bsl::string& theString() const;
 
     /// Return the type of this `Json` value.
     JsonType::Enum type() const BSLS_KEYWORD_NOEXCEPT;
 
-    /// Return a reference providing non-modifiable access to the `Json`
-    /// object associated with the specified `key` in this `JsonObject`.
-    /// The behavior is undefined unless `key` is valid UTF-8 (see
+    /// Return a reference providing non-modifiable access to the `Json` object
+    /// associated with the specified `key` in this `JsonObject`.  The behavior
+    /// is undefined unless `key` is valid UTF-8 (see
     /// `bdlde::Utf8Util::isValid`) and this `JsonObject` already contains a
     /// `Json` object associated with `key`.
     const Json& operator[](const bsl::string_view& key) const;
@@ -2024,46 +2181,51 @@ class Json {
     const Json& operator[](bsl::size_t index) const;
 
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_OPERATOR_EXPLICIT)
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonArray` held by this object.  The behavior is undefined
-    /// unless `isArray()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonArray` held by this object.  The behavior is undefined unless
+    /// `isArray()` returns true.
     explicit operator const JsonArray &() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `boolean` held by this object.  The behavior is undefined
-    /// unless `isBoolean()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `boolean` held by this object.  The behavior is undefined unless
+    /// `isBoolean()` returns true.
     explicit operator const bool &() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonNull` held by this object.  The behavior is undefined
-    /// unless `isNull()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonNull` held by this object.  The behavior is undefined unless
+    /// `isNull()` returns true.
     explicit operator const JsonNull &() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonNumber` held by this object.  The behavior is undefined
-    /// unless `isNumber()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonNumber` held by this object.  The behavior is undefined unless
+    /// `isNumber()` returns true.
     explicit operator const JsonNumber &() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonObject` held by this object.  The behavior is undefined
-    /// unless `isObject()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonObject` held by this object.  The behavior is undefined unless
+    /// `isObject()` returns true.
     explicit operator const JsonObject &() const;
 
-    /// Return a reference providing non-modifiable access to the value of
-    /// type `JsonString` held by this object.  The behavior is undefined
-    /// unless `isString()` returns true.
+    /// Return a reference providing non-modifiable access to the value of type
+    /// `JsonString` held by this object.  The behavior is undefined unless
+    /// `isString()` returns true.
     explicit operator const bsl::string &() const;
 #endif
 
-    /// Return the number of elements in the `JsonObject` or `JsonArray`
-    /// held by this object.  The behavior is undefined unless
+    /// Return the number of elements in the `JsonObject` or `JsonArray` held
+    /// by this object.  The behavior is undefined unless
     /// `isArray() || isObject()` evaluates to true.
     bsl::size_t size() const;
 
+    /// Return `true` if the `JsonObject` held by this `Json` object contains a
+    /// member whose key is equivalent to the specified `key`, and return
+    /// `false` otherwise.  The behavior is undefined unless
+    /// `true == isObject()`.
+    bool contains(const bsl::string_view& key) const;
+
     /// Return the result (having `RETURN_TYPE`) of invoking the specified
-    /// `visitor` (callable) object on this `Json` object.  `visitor` must
-    /// be callable as if it provides the following overloads of
-    /// `operator()`:
+    /// `visitor` (callable) object on this `Json` object.  `visitor` must be
+    /// callable as if it provides the following overloads of `operator()`:
     /// ```
     /// RETURN_TYPE operator()(const JsonObject&  object );
     /// RETURN_TYPE operator()(const JsonArray&   array  );
@@ -2073,21 +2235,21 @@ class Json {
     /// RETURN_TYPE operator()(const JsonNull&    null   );
     /// ```
     /// The overload corresponding to the current `type()` of this `Json`
-    /// object is invoked.  For C++03 `visitor` must be `const`-qualified.
-    /// The behavior is undefined unless all of these six overloads are
-    /// defined.  Note that overloads that are not applicable in a given
-    /// application need not do anything other than return.  Also note that
-    /// if `visitor` is `const` qualified then each of its `operator()`
-    /// overloads must also be `const` qualified.
+    /// object is invoked.  For C++03 `visitor` must be `const`-qualified.  The
+    /// behavior is undefined unless all of these six overloads are defined.
+    /// Note that overloads that are not applicable in a given application need
+    /// not do anything other than return.  Also note that if `visitor` is
+    /// `const` qualified then each of its `operator()` overloads must also be
+    /// `const` qualified.
     template <class RETURN_TYPE, class VISITOR>
     RETURN_TYPE visit(BSLS_COMPILERFEATURES_FORWARD_REF(VISITOR) visitor)
                                                                          const;
 
 #ifdef BSLS_LIBRARYFEATURES_HAS_CPP14_BASELINE_LIBRARY
     /// Return the result (having a deduced type) of invoking the specified
-    /// `visitor` (callable) object on this `Json` object.  `visitor` must
-    /// be callable as if it provides the following overloads of
-    /// `operator()`, any of which can have deduced return types:
+    /// `visitor` (callable) object on this `Json` object.  `visitor` must be
+    /// callable as if it provides the following overloads of `operator()`, any
+    /// of which can have deduced return types:
     /// ```
     /// decltype(auto) operator()(const JsonObject&  object );
     /// decltype(auto) operator()(const JsonArray&   array  );
@@ -2097,12 +2259,12 @@ class Json {
     /// decltype(auto) operator()(const JsonNull&    null   );
     /// ```
     /// The overload corresponding to the current `type()` of this `Json`
-    /// object is invoked.  The behavior is undefined unless all of these
-    /// six overloads are defined *and* each has the same return type.  Note
-    /// that overloads that are not applicable in a given application need
-    /// not do anything other than return.  Also note that if `visitor` is
-    /// `const` qualified then each of its `operator()` overloads must also
-    /// be `const` qualified.
+    /// object is invoked.  The behavior is undefined unless all of these six
+    /// overloads are defined *and* each has the same return type.  Note that
+    /// overloads that are not applicable in a given application need not do
+    /// anything other than return.  Also note that if `visitor` is `const`
+    /// qualified then each of its `operator()` overloads must also be `const`
+    /// qualified.
     template <class VISITOR>
     decltype(auto) visit(BSLS_COMPILERFEATURES_FORWARD_REF(VISITOR) visitor)
                                                                          const;
@@ -2114,18 +2276,17 @@ class Json {
     bslma::Allocator *allocator() const BSLS_KEYWORD_NOEXCEPT;
 
     /// Write the value of this object to the specified output `stream` in a
-    /// human-readable format, and return a reference to `stream`.
-    /// Optionally specify an initial indentation `level`, whose absolute
-    /// value is incremented recursively for nested objects.  If `level` is
-    /// specified, optionally specify `spacesPerLevel`, whose absolute value
-    /// indicates the number of spaces per indentation level for this and
-    /// all of its nested objects.  If `level` is negative, suppress
-    /// indentation of the first line.  If `spacesPerLevel` is negative,
-    /// format the entire output on one line, suppressing all but the
-    /// initial indentation (as governed by `level`).  If `stream` is not
-    /// valid on entry, this operation has no effect.  Note that this
-    /// human-readable format is not fully specified, and can change without
-    /// notice.
+    /// human-readable format, and return a reference to `stream`.  Optionally
+    /// specify an initial indentation `level`, whose absolute value is
+    /// incremented recursively for nested objects.  If `level` is specified,
+    /// optionally specify `spacesPerLevel`, whose absolute value indicates the
+    /// number of spaces per indentation level for this and all of its nested
+    /// objects.  If `level` is negative, suppress indentation of the first
+    /// line.  If `spacesPerLevel` is negative, format the entire output on one
+    /// line, suppressing all but the initial indentation (as governed by
+    /// `level`).  If `stream` is not valid on entry, this operation has no
+    /// effect.  Note that this human-readable format is not fully specified,
+    /// and can change without notice.
     bsl::ostream& print(bsl::ostream& stream,
                         int           level          = 0,
                         int           spacesPerLevel = 4) const;
@@ -2133,26 +2294,26 @@ class Json {
 
 // FREE OPERATORS
 
-/// Write the value of the specified `object` to the specified output
-/// `stream` in a single-line format, and return a reference to `stream`.
-/// If `stream` is not valid on entry, this operation has no effect.  Note
-/// that this human-readable format is not fully specified, can change
-/// without notice, and is logically equivalent to:
+/// Write the value of the specified `object` to the specified output `stream`
+/// in a single-line format, and return a reference to `stream`.  If `stream`
+/// is not valid on entry, this operation has no effect.  Note that this
+/// human-readable format is not fully specified, can change without notice,
+/// and is logically equivalent to:
 /// ```
 /// print(stream, 0, -1);
 /// ```
 bsl::ostream& operator<<(bsl::ostream& stream, const Json& object);
 
-/// Return `true` if the specified `lhs` and `rhs` objects have the same
-/// value, and `false` otherwise.  Two `Json` objects `lhs` and `rhs` have
-/// the same value if they hold objects of the same type, and those objects
-/// have the same value.
+/// Return `true` if the specified `lhs` and `rhs` objects have the same value,
+/// and `false` otherwise.  Two `Json` objects `lhs` and `rhs` have the same
+/// value if they hold objects of the same type, and those objects have the
+/// same value.
 bool operator==(const Json& lhs, const Json& rhs);
 
 /// Return `false` if the specified `lhs` and `rhs` objects have the same
-/// value, and `true` otherwise.  Two `Json` objects `lhs` and `rhs` have
-/// the same value if they hold objects of the same type, and those objects
-/// have the same value.
+/// value, and `true` otherwise.  Two `Json` objects `lhs` and `rhs` have the
+/// same value if they hold objects of the same type, and those objects have
+/// the same value.
 bool operator!=(const Json& lhs, const Json& rhs);
 
 /// Return `true` if the specified `lhs` and `rhs` arguments have the same
@@ -2230,10 +2391,10 @@ bool operator!=(const Json&              lhs, const char              *rhs);
 bool operator!=(const Json&              lhs, const bsl::string_view&  rhs);
 
 /// Exchange the value of the specified `a` `Json` object with that of the
-/// specified `b` `Json` object.  If an exception is thrown, both objects
-/// are left in valid but unspecified states.  This operation guarantees
-/// O[1] complexity.  The behavior is undefined unless `a` was created with
-/// the same allocator as `b`.
+/// specified `b` `Json` object.  If an exception is thrown, both objects are
+/// left in valid but unspecified states.  This operation guarantees O[1]
+/// complexity.  The behavior is undefined unless `a` was created with the same
+/// allocator as `b`.
 void swap(Json& a, Json& b);
 
 // ============================================================================
@@ -2284,8 +2445,8 @@ class Json_Initializer {
     Json_Initializer();
     Json_Initializer(const JsonNull& );                             // IMPLICIT
 
-    /// Create a `Json_Initializer` object containing the boolean value of
-    /// the specified `value` in the internal variant.  Note that (template
+    /// Create a `Json_Initializer` object containing the boolean value of the
+    /// specified `value` in the internal variant.  Note that (template
     /// parameter) `t_BOOL` must be `bool`; types that convert to `bool` (e.g.,
     /// pointers) are disallowed.
     template <class t_BOOL>
@@ -2315,9 +2476,8 @@ class Json_Initializer {
     /// Create a `Json_Initializer` object containing the specified `value`.
     Json_Initializer(bdldfp::Decimal64 value);                      // IMPLICIT
 
-    /// Create a `Json_Initializer` object containing a `string_view`
-    /// referring to the null-terminated sequence pointed to by the
-    /// specified `string`.
+    /// Create a `Json_Initializer` object containing a `string_view` referring
+    /// to the null-terminated sequence pointed to by the specified `string`.
     Json_Initializer(const char *string);                           // IMPLICIT
 
     /// Create a `Json_Initializer` object containing a `string_view` referring
@@ -2338,8 +2498,8 @@ class Json_Initializer {
     Json_Initializer(const std::string_view& sv);                   // IMPLICIT
 #endif
 
-    /// Create a `Json_Initializer` object containing an initializer list
-    /// with the value of the specified `il`.
+    /// Create a `Json_Initializer` object containing an initializer list with
+    /// the value of the specified `il`.
     Json_Initializer(std::initializer_list<Json_Initializer> il);   // IMPLICIT
 
     /// Create a `Json_Initializer` object containing a pointer to the
@@ -2506,9 +2666,9 @@ Json_Initializer::get_storage() const
                         // class Json_ConstructVisitor
                         // ===========================
 
-// This component-private class is used to construct a `Json` object from
-// a `Json_Initializer` object.  `Json_Initializer` is a variant class defined
-// below.
+/// This component-private class is used to construct a `Json` object from a
+/// `Json_Initializer` object.  `Json_Initializer` is a variant class defined
+/// below.
 class Json_ConstructVisitor {
     Json *d_this_p;
 
@@ -2519,7 +2679,7 @@ class Json_ConstructVisitor {
 
     /// Store the specified `jNull` into the `Json` object pointed to by
     /// `d_this_p`.
-    void operator()(const JsonNull &jNull) const;
+    void operator()(const JsonNull& jNull) const;
 
     /// Store the specified `b` into the `Json` object pointed to by
     /// `d_this_p`.
@@ -2660,9 +2820,9 @@ void Json_ConstructVisitor::operator()(bslmf::Nil) const
     BSLS_ASSERT_INVOKE_NORETURN("Unreachable");
 }
 
-                        // ==================================
-                        // class JsonObject_MemberInitializer
-                        // ==================================
+                     // ==================================
+                     // class JsonObject_MemberInitializer
+                     // ==================================
 
 /// This component-private class is designed capture a set of values that can
 /// be used to initialize an element in a `JsonObject`.  The purpose here is to
@@ -2671,8 +2831,8 @@ class JsonObject_MemberInitializer {
 
   private:
     // DATA
-    bsl::string_view    d_first;
-    Json_Initializer    d_second;
+    bsl::string_view d_first;
+    Json_Initializer d_second;
 
   public:
 // BDE_VERIFY pragma: push
@@ -2718,12 +2878,11 @@ class JsonObject_MemberInitializer {
     const Json_Initializer& value() const;
 
 // BDE_VERIFY pragma: pop
-
 };
 
-                        // ----------------------------------
-                        // class JsonObject_MemberInitializer
-                        // ----------------------------------
+                     // ----------------------------------
+                     // class JsonObject_MemberInitializer
+                     // ----------------------------------
 
 // CREATORS
 inline
@@ -2799,9 +2958,9 @@ const Json_Initializer& JsonObject_MemberInitializer::value() const
 
 #endif  // BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
 
-                             // =====================
-                             // struct Json_VisitUtil
-                             // =====================
+                           // =====================
+                           // struct Json_VisitUtil
+                           // =====================
 
 struct Json_VisitUtil {
 
@@ -2849,9 +3008,9 @@ struct Json_VisitUtil {
 #endif
 };
 
-                             // ---------------------
-                             // struct Json_VisitUtil
-                             // ---------------------
+                           // ---------------------
+                           // struct Json_VisitUtil
+                           // ---------------------
 
 template <class RETURN_TYPE,
           class VISITOR,
@@ -2917,9 +3076,9 @@ decltype(auto) Json_VisitUtil::invokeVisitor(
 #endif
 }
 #endif
-                        // ===============================
-                        // class Json_StringInvariantGuard
-                        // ===============================
+                      // ===============================
+                      // class Json_StringInvariantGuard
+                      // ===============================
 
 /// This is a component-private guard class.
 class Json_StringInvariantGuard {
@@ -2930,8 +3089,8 @@ class Json_StringInvariantGuard {
   public:
     // CREATORS
 
-    /// Create an object that guards the invariant (valid UTF-8) of the
-    /// JSON string at the specified `string`.
+    /// Create an object that guards the invariant (valid UTF-8) of the JSON
+    /// string at the specified `string`.
     explicit Json_StringInvariantGuard(bsl::string *string);
 
     /// Validate the JSON string specified on construction using `BSLS_ASSERT`
@@ -2966,6 +3125,29 @@ Json_StringInvariantGuard::~Json_StringInvariantGuard()
                               // ---------------
                               // class JsonArray
                               // ---------------
+
+// PRIVATE CLASS METHODS
+
+template <class t_INTEGRAL>
+bool JsonArray::isNonNegativeImp(t_INTEGRAL value, bsl::true_type )
+{
+    return 0 <= value;
+}
+
+template <class t_INTEGRAL>
+bool JsonArray::isNonNegativeImp(t_INTEGRAL , bsl::false_type )
+{
+    return true;
+}
+
+template <class t_INTEGRAL>
+bool JsonArray::isNonNegative(t_INTEGRAL value)
+{
+    return isNonNegativeImp(
+         value,
+         bsl::integral_constant<bool,
+                                bsl::numeric_limits<t_INTEGRAL>::is_signed>());
+}
 
 // CREATORS
 inline
@@ -3127,26 +3309,42 @@ Json& JsonArray::front()
     return d_elements.front();
 }
 
+template <class t_INDEX>
 inline
-JsonArray::Iterator JsonArray::insert(bsl::size_t index, const Json& json)
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+JsonArray::insert(t_INDEX index, const Json& json)
 {
+    BSLS_ASSERT(isNonNegative(index));
+
     return d_elements.insert(d_elements.begin() + index, json);
 }
 
+template <class t_INDEX>
 inline
-JsonArray::Iterator JsonArray::insert(bsl::size_t             index,
-                                      bslmf::MovableRef<Json> json)
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+JsonArray::insert(t_INDEX index, bslmf::MovableRef<Json> json)
 {
+    BSLS_ASSERT(isNonNegative(index));
+
     return d_elements.insert(d_elements.begin() + index,
                              bslmf::MovableRefUtil::move(json));
 }
 
-template <class t_INPUT_ITERATOR>
+template <class t_INDEX, class t_INPUT_ITERATOR>
 inline
-JsonArray::Iterator JsonArray::insert(bsl::size_t      index,
-                                      t_INPUT_ITERATOR first,
-                                      t_INPUT_ITERATOR last)
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+JsonArray::insert(t_INDEX          index,
+                  t_INPUT_ITERATOR first,
+                  t_INPUT_ITERATOR last)
 {
+    BSLS_ASSERT(isNonNegative(index));
+
     return d_elements.insert(d_elements.begin() + index, first, last);
 }
 
@@ -4192,7 +4390,153 @@ Json::makeString(BSLMF_MOVABLEREF_DEDUCE(t_STRING_TYPE) string)
     d_value = bslmf::MovableRefUtil::move(string);
 }
 
-                        // `pushBack` methods
+                        // `JsonObject::insert` methods
+
+inline
+bsl::pair<JsonObject::Iterator, bool> Json::insert(
+                                              const JsonObject::Member& member)
+{
+    BSLS_ASSERT(isObject() || isNull());
+    if (isNull()) {
+        makeObject();
+    }
+    return theObject().insert(member);
+}
+
+inline
+bsl::pair<JsonObject::Iterator, bool> Json::insert(
+                                    bslmf::MovableRef<JsonObject::Member>
+                                                                       member)
+{
+    BSLS_ASSERT(isObject() || isNull());
+    if (isNull()) {
+        makeObject();
+    }
+    return theObject().insert(bslmf::MovableRefUtil::move(member));
+}
+
+template <class t_INPUT_ITERATOR>
+inline
+typename bsl::enable_if<!bsl::is_convertible<t_INPUT_ITERATOR,
+                                             bsl::string_view>::value,
+                        Json&>::type
+Json::insert(t_INPUT_ITERATOR first, t_INPUT_ITERATOR last)
+{
+    BSLS_ASSERT(isObject() || isNull());
+    if (isNull()) {
+        makeObject();
+    }
+    theObject().insert(first, last);
+    return *this;
+}
+
+#if defined(BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS)
+inline
+Json& Json::insert(std::initializer_list<JsonObject_MemberInitializer>
+                                                         memberInitializers)
+{
+    BSLS_ASSERT(isObject() || isNull());
+    if (isNull()) {
+        makeObject();
+    }
+    theObject().insert(memberInitializers);
+    return *this;
+}
+#endif
+
+template <class t_VALUE, class t_STRING_VIEW>
+inline
+typename bsl::enable_if<!bsl::is_integral   <t_STRING_VIEW>::value
+                      && bsl::is_convertible<t_STRING_VIEW,
+                                             bsl::string_view>::value,
+                         bsl::pair<JsonObject::Iterator, bool> >::type
+Json::insert(const t_STRING_VIEW&                       key,
+             BSLS_COMPILERFEATURES_FORWARD_REF(t_VALUE) value)
+{
+    BSLS_ASSERT(isObject() || isNull());
+    if (isNull()) {
+        makeObject();
+    }
+    return theObject().insert(key,
+                              BSLS_COMPILERFEATURES_FORWARD(t_VALUE, value));
+}
+
+                        // `JsonArray::insert` methods
+
+template <class t_INDEX>
+inline
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+Json::insert(t_INDEX index, const Json& json)
+{
+    BSLS_ASSERT(isArray() || isNull());
+
+    if (isNull()) {
+        makeArray();
+    }
+    return theArray().insert(index, json);
+}
+
+template <class t_INDEX>
+inline
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+Json::insert(t_INDEX index, bslmf::MovableRef<Json> json)
+{
+    BSLS_ASSERT(isArray() || isNull());
+
+    if (isNull()) {
+        makeArray();
+    }
+    return theArray().insert(index, bslmf::MovableRefUtil::move(json));
+}
+
+template <class t_INDEX, class t_INPUT_ITERATOR>
+inline
+typename bsl::enable_if<bsl::is_integral<t_INDEX>::value
+                    && !bsl::is_same<t_INDEX, bool>::value,
+                        JsonArray::Iterator>::type
+Json::insert(t_INDEX          index,
+             t_INPUT_ITERATOR first,
+             t_INPUT_ITERATOR last)
+{
+    BSLS_ASSERT(isArray() || isNull());
+
+    if (isNull()) {
+        makeArray();
+    }
+    return theArray().insert(index, first, last);
+}
+
+inline
+JsonArray::Iterator Json::insert(JsonArray::ConstIterator position,
+                                 const Json&              json)
+{
+    BSLS_ASSERT(isArray());
+    return theArray().insert(position, json);
+}
+
+inline
+JsonArray::Iterator Json::insert(JsonArray::ConstIterator position,
+                                 bslmf::MovableRef<Json>  json)
+{
+    BSLS_ASSERT(isArray());
+    return theArray().insert(position, bslmf::MovableRefUtil::move(json));
+}
+
+template <class t_INPUT_ITERATOR>
+inline
+JsonArray::Iterator Json::insert(JsonArray::ConstIterator position,
+                                 t_INPUT_ITERATOR         first,
+                                 t_INPUT_ITERATOR         last)
+{
+    BSLS_ASSERT(isArray());
+    return theArray().insert(position, first, last);
+}
+
+                        // `JsonArray::pushBack` methods
 
 inline
 Json& Json::pushBack(const Json& json)
@@ -4650,6 +4994,13 @@ bsl::size_t Json::size() const
 {
     BSLS_ASSERT(isArray() || isObject());
     return isArray() ? theArray().size() : theObject().size();
+}
+
+inline
+bool Json::contains(const bsl::string_view& key) const
+{
+    BSLS_ASSERT(isObject());
+    return theObject().contains(key);
 }
 
 // BDE_VERIFY pragma: -FABC01 // not in order

@@ -28,6 +28,7 @@
 #include <bsls_nameof.h>
 #include <bsls_platform.h>
 #include <bsls_review.h>
+#include <bsls_util.h>   // for `BSLS_COMPILERFEATURES_FORWARD`
 
 #include <bsl_climits.h>
 #include <bsl_cstdlib.h>
@@ -328,6 +329,17 @@ using bsl::flush;
 // [39] Json::operator BloombergLP::bdljsn::JsonNumber &();
 // [39] Json::operator BloombergLP::bdljsn::JsonObject &();
 // [39] Json::operator bsl::string &();
+// [44] pair<JsonObject::Iterator, bool> Json::insert(const Member& m);
+// [44] pair<JsonObject::Iterator, bool> Json::insert(MovableRef<Member>);
+// [44] pair<JsonObject::Iterator, bool> Json::insert(string_view, V&& v);
+// [44] Json& Json::insert(ITER f, ITER l);
+// [44] Json& Json::insert(initializer_list<Json_MemberInitializer> ml);
+// [44] JsonArray::Iterator Json::insert(size_t i, const Json& j);
+// [44] JsonArray::Iterator Json::insert(size_t i, MovableRef<Json> j);
+// [44] JsonArray::Iterator Json::insert(size_t i, ITER f, ITER l);
+// [44] JsonArray::Iterator Json::insert(ConstIter p, const Json& j);
+// [44] JsonArray::Iterator Json::insert(ConstIter p, MovableRef<Json> j);
+// [44] JsonArray::Iterator Json::insert(ConstIter p, ITER f, ITER l);
 // [44] Json& Json::pushBack(const Json&       json);
 // [44] Json& Json::pushBack(const JsonArray&  array);
 // [44] Json& Json::pushBack(const JsonObject& object);
@@ -386,6 +398,7 @@ using bsl::flush;
 // [40] const Json& Json::operator[](const string_view& key) const;
 // [40] const Json& Json::operator[](size_t index) const;
 // [40] size_t Json::size() const;
+// [40] bool Json::contains(const bsl::string_view& key) const;
 // [40] Json::operator const BloombergLP::bdljsn::JsonArray &() const;
 // [40] Json::operator const bool &() const;
 // [40] Json::operator const BloombergLP::bdljsn::JsonNull &() const;
@@ -4829,6 +4842,36 @@ void testEqualityOverloadsStr()
 #endif
 }
 
+#define INSERT_AT_LITERAL_0(JSON_X, ZERO, VERBOSE)               \
+{                                                                \
+    bslma::TestAllocator sa("scratch", VERBOSE);                 \
+                                                                 \
+    Json   lvalue("hello", &sa);                                 \
+    JSON_X jsonX(&sa);                                           \
+                                                                 \
+    jsonX.insert(ZERO, lvalue);                                  \
+                                                                 \
+    ASSERT(1       == jsonX.size());                             \
+    ASSERT("hello" == jsonX[0]);                                 \
+                                                                 \
+    jsonX.insert(ZERO, Json("world"));                           \
+    ASSERT(2       == jsonX.size());                             \
+    ASSERT("world" == jsonX[0]);                                 \
+    ASSERT("hello" == jsonX[1]);                                 \
+                                                                 \
+    const char  *values[]   = { "tom", "dick", "harry" };        \
+    bsl::size_t  NUM_VALUES = sizeof values / sizeof *values;    \
+                                                                 \
+    jsonX.insert(ZERO, values, values + NUM_VALUES);             \
+                                                                 \
+    ASSERT(5       == jsonX.size());                             \
+    ASSERT("tom"   == jsonX[0]);                                 \
+    ASSERT("dick"  == jsonX[1]);                                 \
+    ASSERT("harry" == jsonX[2]);                                 \
+    ASSERT("world" == jsonX[3]);                                 \
+    ASSERT("hello" == jsonX[4]);                                 \
+}
+
 /// Use the "function pointer" idiom to confirm that the equality (and
 /// inequality operators between `Json` and the (template parameter) `TYPE`
 /// have the expected signatures.  `Json` and `TYPE` are compared in the
@@ -7570,7 +7613,10 @@ int main(int argc, char *argv[])
         // --------------------------------------------------------------------
         // PROMOTE-FROM-NULL MANIPULATORS
         //   The `Json` class has `pushBack` methods that will automatically
-        //   "promote" a `Json` object from the null type to the array type.
+        //   "promote" a `Json` object from the null type to the array type,
+        //   and `insert` methods that delegate to either `JsonArray::insert`
+        //   or `JsonObject::insert` (promoting from null to the appropriate
+        //   type where applicable).
         //
         // Concerns:
         // 1. Invocation of any of the 22 `pushBack` overloads on a `Json`
@@ -7580,7 +7626,17 @@ int main(int argc, char *argv[])
         // 2. The result of each `Json::pushBack` method invocation is
         //    identical to invoking the corresponding method on a `JsonArray`.
         //
-        // 3. QoI: Asserted precondition violations are detected when enabled.
+        // 3. Invocation of the 6 `JsonArray::insert` overloads on a `Json`
+        //    object delegates to the corresponding `JsonArray::insert`.  The
+        //    3 index-based overloads promote from null to array; the 3
+        //    iterator-based overloads require the object to already be an
+        //    array (i.e., no promotion from null);
+        //
+        // 4. Invocation of the 5 `JsonObject::insert` overloads on a `Json`
+        //    object delegates to the corresponding `JsonObject::insert`,
+        //    promoting from null to object type.
+        //
+        // 5. QoI: Asserted precondition violations are detected when enabled.
         //    Note that `Json::pushBack(const char * )` has an extra defensive
         //    check for the null pointer.
         //
@@ -7607,7 +7663,23 @@ int main(int argc, char *argv[])
         // 2. Perform a separate negative test for the null pointer check in
         //    `Json::pushBack(const char * )`.
         //
+        // 3. Test each `Json::insert` overload by constructing a `Json`
+        //    object in the appropriate initial state, invoking the method, and
+        //    comparing the result to a direct invocation on a `JsonArray` or
+        //    `JsonObject`.  Also test promotion from null where applicable.
+        //
         // Testing:
+        //   pair<JsonObject::Iterator, bool> Json::insert(const Member& m);
+        //   pair<JsonObject::Iterator, bool> Json::insert(MovableRef<Member>);
+        //   pair<JsonObject::Iterator, bool> Json::insert(string_view, V&& v);
+        //   Json& Json::insert(ITER f, ITER l);
+        //   Json& Json::insert(initializer_list<Json_MemberInitializer> ml);
+        //   JsonArray::Iterator Json::insert(size_t i, const Json& j);
+        //   JsonArray::Iterator Json::insert(size_t i, MovableRef<Json> j);
+        //   JsonArray::Iterator Json::insert(size_t i, ITER f, ITER l);
+        //   JsonArray::Iterator Json::insert(ConstIter p, const Json& j);
+        //   JsonArray::Iterator Json::insert(ConstIter p, MovableRef<Json> j);
+        //   JsonArray::Iterator Json::insert(ConstIter p, ITER f, ITER l);
         //   Json& Json::pushBack(const Json&       json);
         //   Json& Json::pushBack(const JsonArray&  array);
         //   Json& Json::pushBack(const JsonObject& object);
@@ -7636,35 +7708,807 @@ int main(int argc, char *argv[])
                           << "PROMOTE-FROM-NULL MANIPULATORS" << endl
                           << "==============================" << endl;
 
+        if (verbose) cout <<
+        "pair<JsonObject::Iterator, bool> Json::insert(const Member& m);\n";
+        {
+            typedef JsonObject                    JO;
+            typedef bsl::pair<JO::Iterator, bool> Retval;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            Json              json(&ta);
+            const char       *key   = "hello";
+            const char       *value = "world";
+            const JO::Member member(key, value, &ta);
+
+            ASSERT(true  ==  json.isNull());
+
+            Retval retval = json.insert(member);                        // TEST
+                                                                        //
+            ASSERT(true  ==  json.isObject());
+
+            ASSERT(json.theObject().begin() ==  retval.first);
+            ASSERT(true                     ==  retval.second);
+            ASSERT(true                     ==  json.contains(key));
+            ASSERT(value                    ==  json[key]);
+            ASSERT(1                        ==  json.size());
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json mY;
+
+                mY.makeObject();   ASSERT_PASS(mY.insert(member)); // PASS
+                mY.makeArray();    ASSERT_FAIL(mY.insert(member));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(member));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(member));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(member));
+                mY.makeNull();     ASSERT_PASS(mY.insert(member)); // PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                using RetTypeExpect = bsl::pair<JO::Iterator, bool>;
+                using RetTypeActual = decltype(json.insert(member));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+        if (verbose) cout <<
+        "pair<JsonObject::Iterator, bool> Json::insert(MovableRef<Member>);\n";
+        {
+            typedef JsonObject                    JO;
+            typedef bsl::pair<JO::Iterator, bool> Retval;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            Json        json(&ta);
+            const char *key   = "hello";
+            const char *value = "world";
+            JO::Member  member(key, value, &ta);
+
+            ASSERT(true  ==  json.isNull());
+
+            Retval retval = json.insert(bslmf::MovableRefUtil::move(member));
+                                                                        // TEST
+            ASSERT(true  ==  json.isObject());
+
+            ASSERT(json.theObject().begin() ==  retval.first);
+            ASSERT(true                     ==  retval.second);
+            ASSERT(true                     ==  json.contains(key));
+            ASSERT(value                    ==  json[key]);
+            ASSERT(1                        ==  json.size());
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json       mY(&ta);
+                JO::Member mA(key, value, &ta);
+                JO::Member mB(key, value, &ta);
+
+#define MOVE(X) bslmf::MovableRefUtil::move(X)
+
+                mY.makeObject();   ASSERT_PASS(mY.insert(MOVE(mA))); // PASS
+                mY.makeArray();    ASSERT_FAIL(mY.insert(MOVE(mB)));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(MOVE(mB)));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(MOVE(mB)));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(MOVE(mB)));
+                mY.makeNull();     ASSERT_PASS(mY.insert(MOVE(mB))); // PASS
+#undef MOVE
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                JO::Member          m(key, value);
+                using RetTypeExpect = bsl::pair<JO::Iterator, bool>;
+                using RetTypeActual =
+                       decltype(json.insert(bslmf::MovableRefUtil::move(m)));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+        if (verbose) cout <<
+        "pair<JsonObject::Iterator, bool> Json::insert(string_view, V&& v);\n";
+        {
+            // Though not manifest from the signature above, this is the test
+            // of the perfect forwarding interface.
+
+            typedef JsonObject                    JO;
+            typedef bsl::pair<JO::Iterator, bool> Retval;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            Json                    json(&ta);
+            const bsl::string_view  key   = "hello";
+            const char             *value = "world";
+
+            ASSERT(true  ==  json.isNull());
+
+            Retval retval = json.insert(
+                key,
+                BSLS_COMPILERFEATURES_FORWARD(Json, Json(value, &ta))); // TEST
+
+            ASSERT(true  ==  json.isObject());
+
+            ASSERT(json.theObject().begin() ==  retval.first);
+            ASSERT(true                     ==  retval.second);
+            ASSERT(true                     ==  json.contains(key));
+            ASSERT(value                    ==  json[key]);
+            ASSERT(1                        ==  json.size());
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json mY;
+
+                mY.makeObject();   ASSERT_PASS(mY.insert(key,
+                                               Json(value))); // PASS
+                mY.makeArray();    ASSERT_FAIL(mY.insert(key, Json(value)));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(key, Json(value)));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(key, Json(value)));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(key, Json(value)));
+                mY.makeNull();     ASSERT_PASS(mY.insert(key,
+                                               Json(value))); // PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                using RetTypeExpect = bsl::pair<JO::Iterator, bool>;
+                using RetTypeActual =
+                             decltype(json.insert(key, Json(value, &ta)));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+        if (verbose) cout <<
+        "Json& Json::insert(ITER f, ITER l);\n";
+        {
+            typedef JsonObject JO;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const JO::Member members[] = {
+                JO::Member("hello", Json("world", &ta), &ta),
+                JO::Member("foo",   Json("bar",   &ta), &ta)
+            };
+            const bsl::size_t NUM_MEMBERS = sizeof members / sizeof *members;
+            const JO::Member *first = members;
+            const JO::Member *last  = members + NUM_MEMBERS;
+
+            Json json(&ta);
+
+            ASSERT(true  ==  json.isNull());
+
+            Json& retval = json.insert(first, last);                    // TEST
+
+            ASSERT(&json                    ==  &retval);
+            ASSERT(true                     ==  json.isObject());
+            ASSERT(2                        ==  json.size());
+            ASSERT(true                     ==  json.contains("hello"));
+            ASSERT(true                     ==  json.contains("foo"));
+            ASSERT(Json("world")            ==  json["hello"]);
+            ASSERT(Json("bar")              ==  json["foo"]);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json mY;
+
+                mY.makeObject();   ASSERT_PASS(mY.insert(first, last));  //PASS
+                mY.makeArray();    ASSERT_FAIL(mY.insert(first, last));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(first, last));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(first, last));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(first, last));
+                mY.makeNull();     ASSERT_PASS(mY.insert(first, last));  //PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                using RetTypeExpect = Json&;
+                using RetTypeActual = decltype(json.insert(first, last));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
+        if (verbose) cout <<
+        "Json& Json::insert(initializer_list<Json_MemberInitializer> ml);\n";
+        {
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            Json json(&ta);
+
+            ASSERT(true  ==  json.isNull());
+
+            Json& retval = json.insert({{"hello", "world"},
+                                        {"foo",   "bar"  }});           // TEST
+
+            ASSERT(&json                    ==  &retval);
+            ASSERT(true                     ==  json.isObject());
+            ASSERT(2                        ==  json.size());
+            ASSERT(true                     ==  json.contains("hello"));
+            ASSERT(true                     ==  json.contains("foo"));
+            ASSERT(Json("world")            ==  json["hello"]);
+            ASSERT(Json("bar")              ==  json["foo"]);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json mY;
+
+#define IL {{"hello", "world"}}
+
+                mY.makeObject();   ASSERT_PASS(mY.insert(IL)); // PASS
+                mY.makeArray();    ASSERT_FAIL(mY.insert(IL));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(IL));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(IL));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(IL));
+                mY.makeNull();     ASSERT_PASS(mY.insert(IL)); // PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                using RetTypeExpect = Json&;
+                using RetTypeActual = decltype(json.insert(IL));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+#undef IL
+        }
+#endif // BSLS_COMPILERFEATURES_SUPPORT_GENERALIZED_INITIALIZERS
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(size_t i, const Json& j);\n";
+        {
+            typedef JsonArray JA;
+
+            const bsl::size_t index0 = 0;
+            const bsl::size_t index1 = 1;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const Json  alpha("alpha", &ta);
+            const Json  beta ("beta",  &ta);
+            const Json  gamma("gamma", &ta);
+
+            Json json(&ta);
+
+            tam.reset();
+
+            ASSERT(true  ==  json.isNull());
+
+            JA::Iterator it = json.insert(index0, alpha);               // TEST
+
+            ASSERT(true                    ==  json.isArray());
+            ASSERT(1                       ==  json.size());
+            ASSERT(alpha                   ==  json[0]);
+            ASSERT(alpha                   == *it);
+            ASSERT(json.theArray().begin() ==  it);
+
+            it = json.insert(index0, beta);                             // TEST
+
+            ASSERT(2                       ==  json.size());
+            ASSERT(beta                    ==  json[0]);
+            ASSERT(alpha                   ==  json[1]);
+            ASSERT(beta                    == *it);
+            ASSERT(json.theArray().begin() ==  it);
+
+            it = json.insert(index1, gamma);                            // TEST
+
+            ASSERT(3                       ==  json.size());
+            ASSERT(beta                    ==  json[0]);
+            ASSERT(gamma                   ==  json[1]);
+            ASSERT(alpha                   ==  json[2]);
+            ASSERT(gamma                   == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json              mY;
+                const bsl::size_t index0 = 0;
+
+                mY.makeObject();   ASSERT_FAIL(mY.insert(index0, beta));
+                mY.makeArray();    ASSERT_PASS(mY.insert(index0, beta));// PASS
+                mY.makeString(""); ASSERT_FAIL(mY.insert(index0, beta));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(index0, beta));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(index0, beta));
+                mY.makeNull();     ASSERT_PASS(mY.insert(index0, beta));// PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(bsl::size_t(0),
+                                                           alpha));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(size_t i, MovableRef<Json> j);\n";
+        {
+            typedef JsonArray JA;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const bsl::size_t index0 = 0;
+            const bsl::size_t index1 = 1;
+
+            Json alpha("alpha" SUFFICIENTLY_LONG_STRING, &ta);
+            Json beta ("beta"  SUFFICIENTLY_LONG_STRING, &ta);
+            Json gamma("gamma" SUFFICIENTLY_LONG_STRING, &ta);
+
+            const Json alphaVal(alpha, &ta);
+            const Json betaVal (beta,  &ta);
+            const Json gammaVal(gamma, &ta);
+
+            Json json(&ta);
+
+            tam.reset();
+
+            ASSERT(true == json.isNull());
+
+            JA::Iterator it = json.insert(
+                                   index0,
+                                   bslmf::MovableRefUtil::move(alpha)); // TEST
+
+            ASSERT(1 == tam.numBlocksTotalChange());
+            ASSERT(1 == tam.numBlocksInUseChange());  // initial `data`
+
+            ASSERT(true ==  json.isArray());
+
+            ASSERT(1                       ==  json.size());
+            ASSERT(alphaVal                ==  json[0]);
+            ASSERT(alphaVal                == *it);
+            ASSERT(json.theArray().begin() ==  it);
+
+            it = json.insert(index0, bslmf::MovableRefUtil::move(beta));// TEST
+                                                                        //
+            ASSERT(2 == tam.numBlocksTotalChange());
+            ASSERT(1 == tam.numBlocksInUseChange());  // resize `data`
+
+            ASSERT(2                       ==  json.size());
+            ASSERT(betaVal                 ==  json[0]);
+            ASSERT(alphaVal                ==  json[1]);
+            ASSERT(betaVal                 == *it);
+            ASSERT(json.theArray().begin() ==  it);
+
+            it = json.insert(index1, bslmf::MovableRefUtil::move(gamma));
+                                                                        // TEST
+            ASSERT(3 == tam.numBlocksTotalChange());
+            ASSERT(1 == tam.numBlocksInUseChange());  // resize `data`
+
+            ASSERT(3                           ==  json.size());
+            ASSERT(betaVal                     ==  json[0]);
+            ASSERT(gammaVal                    ==  json[1]);
+            ASSERT(alphaVal                    ==  json[2]);
+            ASSERT(gammaVal                    == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json              mY;
+                Json              v("x");
+                const bsl::size_t index0 = 0;
+
+#define MOVE(X) bslmf::MovableRefUtil::move(X)
+
+                mY.makeObject();   ASSERT_FAIL(mY.insert(index0, MOVE(v)));
+                mY.makeArray();    ASSERT_PASS(mY.insert(index0, MOVE(v)));
+                                                                        // PASS
+
+                v = Json("x");  // restore `v`.
+
+                mY.makeString(""); ASSERT_FAIL(mY.insert(index0, MOVE(v)));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(index0, MOVE(v)));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(index0, MOVE(v)));
+                mY.makeNull();     ASSERT_PASS(mY.insert(index0, MOVE(v)));
+                                                                        // PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                Json              j("x", &ta);
+                const bsl::size_t index0 = 0;
+
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(index0, MOVE(j)));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+#undef MOVE
+        }
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(size_t i, ITER f, ITER l);\n";
+        {
+            typedef JsonArray JA;
+
+            const bsl::size_t index0 = 0;
+            const bsl::size_t index1 = 1;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const Json elements[] = {
+                Json("alpha", &ta),
+                Json("beta",  &ta),
+                Json("gamma", &ta)
+            };
+            const bsl::size_t NUM_ELEMENTS = sizeof  elements
+                                           / sizeof *elements;
+
+            const Json *first = elements;
+            const Json *last  = elements + NUM_ELEMENTS;
+
+            Json json(&ta);
+
+            tam.reset();
+
+            ASSERT(true ==  json.isNull());
+
+            JA::Iterator it = json.insert(index0, first, last);         // TEST
+
+            ASSERT(true ==  json.isArray());
+
+            ASSERT(3                       ==  json.size());
+            ASSERT(elements[0]             ==  json[0]);
+            ASSERT(elements[1]             ==  json[1]);
+            ASSERT(elements[2]             ==  json[2]);
+            ASSERT(elements[0]             == *it);
+            ASSERT(json.theArray().begin() ==  it);
+
+            it = json.insert(index1, first, first + 1);                 // TEST
+
+            ASSERT(4                           ==  json.size());
+            ASSERT(elements[0]                 ==  json[0]);
+            ASSERT(elements[0]                 ==  json[1]);
+            ASSERT(elements[1]                 ==  json[2]);
+            ASSERT(elements[2]                 ==  json[3]);
+            ASSERT(elements[0]                 == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json        mY;
+                const Json *f = first;
+                const Json *l = last;
+
+                mY.makeObject();   ASSERT_FAIL(mY.insert(index0, f, l));
+                mY.makeArray();    ASSERT_PASS(mY.insert(index0, f, l));// PASS
+                mY.makeString(""); ASSERT_FAIL(mY.insert(index0, f, l));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(index0, f, l));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(index0, f, l));
+                mY.makeNull();     ASSERT_PASS(mY.insert(index0, f, l));// PASS
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                const bsl::size_t  index0 = 0;
+                const Json        *f      = first;
+                const Json        *l      = last;
+
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(index0, f, l));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(ConstIter p, const Json& j);\n";
+        {
+            typedef JsonArray JA;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const Json alpha("alpha", &ta);
+            const Json beta ("beta",  &ta);
+            const Json gamma("gamma", &ta);
+
+            Json json(&ta);
+            json.makeArray();
+            json.theArray().pushBack(alpha);
+            json.theArray().pushBack(alpha);  // [alpha, alpha]
+
+            tam.reset();
+
+            JA::ConstIterator pos = json.theArray().cbegin() + 1;
+
+            JA::Iterator it = json.insert(pos, beta);                   // TEST
+
+            ASSERT(3                           ==  json.size());
+            ASSERT(alpha                       ==  json[0]);
+            ASSERT(beta                        ==  json[1]);
+            ASSERT(alpha                       ==  json[2]);
+            ASSERT(beta                        == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            pos = json.theArray().cend();
+
+            it = json.insert(pos, gamma);                               // TEST
+
+            ASSERT(4                           ==  json.size());
+            ASSERT(alpha                       ==  json[0]);
+            ASSERT(beta                        ==  json[1]);
+            ASSERT(alpha                       ==  json[2]);
+            ASSERT(gamma                       ==  json[3]);
+            ASSERT(gamma                       == *it);
+            ASSERT(json.theArray().end() - 1   ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json                    mY; mY.makeArray();
+                JA::ConstIterator const p = mY.theArray().cbegin();
+                                   ASSERT_PASS(mY.insert(p, beta)); // PASS
+
+                mY.makeObject();   ASSERT_FAIL(mY.insert(p, beta));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(p, beta));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(p, beta));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(p, beta));
+                mY.makeNull();     ASSERT_FAIL(mY.insert(p, beta));
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                JA::ConstIterator p = json.theArray().cbegin();
+
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(p, alpha));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
+#define MOVE(X) bslmf::MovableRefUtil::move(X)
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(ConstIter p, MovableRef<Json> j);\n";
+        {
+            typedef JsonArray JA;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            Json alpha("alpha" SUFFICIENTLY_LONG_STRING, &ta);
+            Json beta ("beta"  SUFFICIENTLY_LONG_STRING, &ta);
+            Json gamma("gamma" SUFFICIENTLY_LONG_STRING, &ta);
+
+            const Json alphaVal(alpha, &ta);
+            const Json betaVal (beta,  &ta);
+            const Json gammaVal(gamma, &ta);
+
+            Json json(&ta);
+            json.makeArray();
+            json.theArray().pushBack(alphaVal);
+            json.theArray().pushBack(alphaVal);  // [alpha, alpha]
+
+            tam.reset();
+
+            JA::ConstIterator pos = json.theArray().cbegin() + 1;
+
+            JA::Iterator it = json.insert(pos, MOVE(beta));             // TEST
+
+            ASSERT(3                           ==  json.size());
+            ASSERT(alphaVal                    ==  json[0]);
+            ASSERT(betaVal                     ==  json[1]);
+            ASSERT(alphaVal                    ==  json[2]);
+            ASSERT(betaVal                     == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            pos = json.theArray().cend();
+
+            it = json.insert(pos, MOVE(gamma));                         // TEST
+
+            ASSERT(4                           ==  json.size());
+            ASSERT(alphaVal                    ==  json[0]);
+            ASSERT(betaVal                     ==  json[1]);
+            ASSERT(alphaVal                    ==  json[2]);
+            ASSERT(gammaVal                    ==  json[3]);
+            ASSERT(gammaVal                    == *it);
+            ASSERT(json.theArray().end() - 1   ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json                    mY; mY.makeArray();
+                Json                    v("x");
+                JA::ConstIterator const p = mY.theArray().cbegin();
+
+                                   ASSERT_PASS(mY.insert(p, MOVE(v))); // PASS
+                v = Json("x");  // restore
+
+                mY.makeObject();   ASSERT_FAIL(mY.insert(p, MOVE(v)));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(p, MOVE(v)));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(p, MOVE(v)));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(p, MOVE(v)));
+                mY.makeNull();     ASSERT_FAIL(mY.insert(p, MOVE(v)));
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                Json              j("x", &ta);
+                JA::ConstIterator p = json.theArray().cbegin();
+
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(p, MOVE(j)));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+#undef MOVE
+
+        if (verbose) cout <<
+        "JsonArray::Iterator Json::insert(ConstIter p, ITER f, ITER l);\n";
+        {
+            typedef JsonArray JA;
+
+            bslma::TestAllocator        ta("Json::insert",
+                                            veryVeryVeryVerbose);
+            bslma::TestAllocatorMonitor tam(&ta);
+
+            const Json elements[] = {
+                Json("alpha", &ta),
+                Json("beta",  &ta),
+                Json("gamma", &ta)
+            };
+            const bsl::size_t NUM_ELEMENTS = sizeof  elements
+                                           / sizeof *elements;
+
+            const Json *first = elements;
+            const Json *last  = elements + NUM_ELEMENTS;
+
+            const Json sentinel("sentinel", &ta);
+
+            Json json(&ta);
+            json.makeArray();
+            json.theArray().pushBack(sentinel);
+            json.theArray().pushBack(sentinel);  // [sentinel, sentinel]
+
+            tam.reset();
+
+            JA::ConstIterator pos = json.theArray().cbegin() + 1;
+
+            JA::Iterator it = json.insert(pos, first, last);            // TEST
+
+            ASSERT(5                           ==  json.size());
+            ASSERT(sentinel                    ==  json[0]);
+            ASSERT(elements[0]                 ==  json[1]);
+            ASSERT(elements[1]                 ==  json[2]);
+            ASSERT(elements[2]                 ==  json[3]);
+            ASSERT(sentinel                    ==  json[4]);
+            ASSERT(elements[0]                 == *it);
+            ASSERT(json.theArray().begin() + 1 ==  it);
+
+            pos = json.theArray().cend();
+
+            it = json.insert(pos, first, first + 1);                    // TEST
+
+            ASSERT(6                           ==  json.size());
+            ASSERT(elements[0]                 ==  json[5]);
+            ASSERT(elements[0]                 == *it);
+            ASSERT(json.theArray().end() - 1   ==  it);
+
+            // Negative Test
+            {
+                bsls::AssertTestHandlerGuard hG;
+
+                Json                     mY; mY.makeArray();
+                const Json              *f = first;
+                const Json              *l = last;
+                JA::ConstIterator const  p = mY.theArray().cbegin();
+
+                                   ASSERT_PASS(mY.insert(p, f, l)); // PASS
+                mY.makeObject();   ASSERT_FAIL(mY.insert(p, f, l));
+                mY.makeString(""); ASSERT_FAIL(mY.insert(p, f, l));
+                mY.makeNumber();   ASSERT_FAIL(mY.insert(p, f, l));
+                mY.makeBoolean();  ASSERT_FAIL(mY.insert(p, f, l));
+                mY.makeNull();     ASSERT_FAIL(mY.insert(p, f, l));
+            }
+
+#ifdef BSLS_COMPILERFEATURES_SUPPORT_DECLTYPE
+            {
+                JA::ConstIterator  p = json.theArray().cbegin();
+                const Json        *f = first;
+                const Json        *l = last;
+
+                using RetTypeExpect = JA::Iterator;
+                using RetTypeActual = decltype(json.insert(p, f, l));
+
+                static_assert(bsl::is_same<RetTypeExpect,
+                                           RetTypeActual>::value, "");
+            }
+#endif
+        }
+
         if (verbose) cout << "Test `Json::pushBack` Overloads" << endl;
         {
-            testJsonPushBack        <Json>               ('y', 2, verbose);
-            testJsonPushBackMoveRef <Json>               ('z',    verbose);
+            const int vvvVerbose = veryVeryVeryVerbose;
 
-            testJsonPushBack        <JsonArray>          ('a', 2, verbose);
-            testJsonPushBack        <JsonObject>         ('b', 3, verbose);
-            testJsonPushBack        <JsonNumber>         ('c', 2, verbose);
+            testJsonPushBack        <Json>               ('y', 2, vvvVerbose);
+            testJsonPushBackMoveRef <Json>               ('z',    vvvVerbose);
 
-            testJsonPushBackMoveRef <JsonArray>          ('d',    verbose);
-            testJsonPushBackMoveRef <JsonNumber>         ('e',    verbose);
-            testJsonPushBackMoveRef <JsonObject>         ('f',    verbose);
+            testJsonPushBack        <JsonArray>          ('a', 2, vvvVerbose);
+            testJsonPushBack        <JsonObject>         ('b', 3, vvvVerbose);
+            testJsonPushBack        <JsonNumber>         ('c', 2, vvvVerbose);
 
-            testJsonPushBack        <JsonNull>           ('g', 1, verbose);
+            testJsonPushBackMoveRef <JsonArray>          ('d',    vvvVerbose);
+            testJsonPushBackMoveRef <JsonNumber>         ('e',    vvvVerbose);
+            testJsonPushBackMoveRef <JsonObject>         ('f',    vvvVerbose);
 
-            testJsonPushBack        <bool>               ('h', 1, verbose);
-            testJsonPushBack        <int>                ('i', 1, verbose);
-            testJsonPushBack        <unsigned int>       ('j', 1, verbose);
-            testJsonPushBack        <long>               ('k', 1, verbose);
-            testJsonPushBack        <unsigned long>      ('l', 1, verbose);
-            testJsonPushBack        <long long>          ('m', 1, verbose);
-            testJsonPushBack        <unsigned long long> ('n', 1, verbose);
-            testJsonPushBack        <float>              ('o', 1, verbose);
-            testJsonPushBack        <double>             ('p', 1, verbose);
-            testJsonPushBack        <bdldfp::Decimal64>  ('q', 1, verbose);
+            testJsonPushBack        <JsonNull>           ('g', 1, vvvVerbose);
 
-            testJsonPushBack        <const char *>       ('r', 1, verbose);
-            testJsonPushBack        <bsl::string_view>   ('s', 1, verbose);
-            testArrayPushBackMoveRef<bsl::string>        ('t',    verbose);
+            testJsonPushBack        <bool>               ('h', 1, vvvVerbose);
+            testJsonPushBack        <int>                ('i', 1, vvvVerbose);
+            testJsonPushBack        <unsigned int>       ('j', 1, vvvVerbose);
+            testJsonPushBack        <long>               ('k', 1, vvvVerbose);
+            testJsonPushBack        <unsigned long>      ('l', 1, vvvVerbose);
+            testJsonPushBack        <long long>          ('m', 1, vvvVerbose);
+            testJsonPushBack        <unsigned long long> ('n', 1, vvvVerbose);
+            testJsonPushBack        <float>              ('o', 1, vvvVerbose);
+            testJsonPushBack        <double>             ('p', 1, vvvVerbose);
+            testJsonPushBack        <bdldfp::Decimal64>  ('q', 1, vvvVerbose);
+
+            testJsonPushBack        <const char *>       ('r', 1, vvvVerbose);
+            testJsonPushBack        <bsl::string_view>   ('s', 1, vvvVerbose);
+            testArrayPushBackMoveRef<bsl::string>        ('t',    vvvVerbose);
         }
 
         if (verbose) cout << "Negative test: `Json::pushBack(const char *)`"
@@ -7682,6 +8526,38 @@ int main(int argc, char *argv[])
 
             ASSERT_FAIL(objExpectFail.pushBack(   nullStr));
             ASSERT_PASS(objExpectPass.pushBack(notNullStr));
+        }
+
+        if (verbose) cout << "`Json::insert` to index literal `0`" << endl;
+        {
+            INSERT_AT_LITERAL_0(Json, 0,     veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(Json, 0L,    veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(Json, 0LL,   veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(Json, 0U,    veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(Json, 0UL,   veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(Json, 0ULL,  veryVeryVeryVerbose)
+
+            // Negative test
+            {
+                bslma::TestAllocator ta("scratch", veryVeryVeryVerbose);
+
+                bsls::AssertTestHandlerGuard hG;
+
+                const Json lvalue("x", &ta);
+                Json       mY(&ta);
+
+                ASSERT_FAIL(mY.insert(-1, lvalue));
+                ASSERT_PASS(mY.insert( 0, lvalue));
+
+                ASSERT_FAIL(mY.insert(-1, Json()));
+                ASSERT_PASS(mY.insert( 0, Json()));
+
+                const char  *values[]   = { "tom", "dick", "harry" };
+                bsl::size_t  NUM_VALUES = sizeof values / sizeof *values;
+
+                ASSERT_FAIL(mY.insert(-1, values, values + NUM_VALUES));
+                ASSERT_PASS(mY.insert( 0, values, values + NUM_VALUES));
+            }
         }
 
       } break;
@@ -8332,6 +9208,7 @@ int main(int argc, char *argv[])
         //   const Json& Json::operator[](const string_view& key) const;
         //   const Json& Json::operator[](size_t index) const;
         //   size_t Json::size() const;
+        //   bool Json::contains(const bsl::string_view& key) const;
         //   Json::operator const BloombergLP::bdljsn::JsonArray &() const;
         //   Json::operator const bool &() const;
         //   Json::operator const BloombergLP::bdljsn::JsonNull &() const;
@@ -8340,13 +9217,15 @@ int main(int argc, char *argv[])
         //   Json::operator const bsl::basic_string &() const;
         //
         //   bslma::Allocator* Json::allocator() const;
+        //
+        //   Note: The `Json::insert` methods are tested in case [44].
         // --------------------------------------------------------------------
 
         typedef bdljsn::Json Obj;
 
         if (verbose) cout << endl
-            << "JSON ACCESSORS" << endl
-            << "==============" << endl;
+                          << "JSON ACCESSORS" << endl
+                          << "==============" << endl;
 
         bslma::TestAllocator         da("default", veryVeryVeryVerbose);
         bslma::DefaultAllocatorGuard dag(&da);
@@ -8393,193 +9272,409 @@ int main(int argc, char *argv[])
         {
             bslma::TestAllocator xa("scratch", veryVeryVeryVerbose);
 
-            const JsonNumber NUMBERS[] = {
-                JsonNumber(1, &xa),
-                JsonNumber(0, &xa),
-                JsonNumber(-1, &xa),
-                JsonNumber(bsl::numeric_limits<short>::max(), &xa),
-                JsonNumber(bsl::numeric_limits<int>::max(), &xa),
-                JsonNumber(bsl::numeric_limits<unsigned int>::max(), &xa),
-                JsonNumber(bsl::numeric_limits<bsls::Types::Int64>::max(),
-                           &xa),
-                JsonNumber(bsl::numeric_limits<bsls::Types::Uint64>::max(),
-                           &xa),
-                JsonNumber(bsl::numeric_limits<short>::min(), &xa),
-                JsonNumber(bsl::numeric_limits<int>::min(), &xa),
-                JsonNumber(bsl::numeric_limits<bsls::Types::Int64>::min(),
-                           &xa),
-                JsonNumber(bsl::numeric_limits<int>::max() + 1ll, &xa),
-                JsonNumber(bsl::numeric_limits<short>::max() + 1ll, &xa),
-                JsonNumber(bsl::numeric_limits<unsigned int>::max() + 1ll,
-                           &xa),
-                JsonNumber(bsl::numeric_limits<bsls::Types::Int64>::max()
-                           + 1ull,
-                           &xa),
-                JsonNumber(bsl::numeric_limits<short>::min() - 1ll, &xa),
-                JsonNumber(bsl::numeric_limits<int>::min() - 1ll, &xa),
-                JsonNumber(
-                    static_cast<double>(
-                    bsl::numeric_limits<bsls::Types::Int64>::max()) * 1.00001,
-                    &xa),
-                JsonNumber(
-                    static_cast<double>(
-                    bsl::numeric_limits<bsls::Types::Int64>::min()) * 1.00001,
-                    &xa),
-                JsonNumber(
-                   static_cast<double>(
-                   bsl::numeric_limits<bsls::Types::Uint64>::max()) * 1.00001,
-                   &xa),
-                JsonNumber(bsl::numeric_limits<double>::max(), &xa),
-                JsonNumber(bsl::numeric_limits<double>::min(), &xa),
-                JsonNumber(1e100 * 1e100, &xa),
-                JsonNumber(-1e100 * 1e100, &xa)
+            typedef JsonNumber           JN;
+            typedef bsls::Types:: Int64  Int64;
+            typedef bsls::Types::Uint64 Uint64;
+
+            const JN NUMBERS[] = {
+                JN( 1,                                                  &xa),
+                JN( 0,                                                  &xa),
+                JN(-1,                                                  &xa),
+                JN(bsl::numeric_limits<short       >::max(),            &xa),
+                JN(bsl::numeric_limits<int         >::max(),            &xa),
+                JN(bsl::numeric_limits<unsigned int>::max(),            &xa),
+                JN(bsl::numeric_limits<Int64       >::max(),            &xa),
+                JN(bsl::numeric_limits<Uint64      >::max(),            &xa),
+
+                JN(bsl::numeric_limits<short       >::min(),            &xa),
+                JN(bsl::numeric_limits<int         >::min(),            &xa),
+                JN(bsl::numeric_limits<Int64       >::min(),            &xa),
+
+                JN(bsl::numeric_limits<short       >::max() +  1ll,     &xa),
+                JN(bsl::numeric_limits<int         >::max() +  1ll,     &xa),
+                JN(bsl::numeric_limits<unsigned int>::max() +  1ll,     &xa),
+                JN(bsl::numeric_limits<Int64       >::max() + 1ull,     &xa),
+                JN(bsl::numeric_limits<Uint64      >::max() + 1ull,     &xa),
+
+                JN(bsl::numeric_limits<short       >::min() -  1ll,     &xa),
+                JN(bsl::numeric_limits<int         >::min() -  1ll,     &xa),
+
+                JN(static_cast<double>(
+                   bsl::numeric_limits<Int64       >::max()) * 1.00001, &xa),
+                JN(static_cast<double>(
+                   bsl::numeric_limits<Int64       >::min()) * 1.00001, &xa),
+                JN(static_cast<double>(
+                   bsl::numeric_limits<Uint64      >::max()) * 1.00001, &xa),
+
+                JN(bsl::numeric_limits<double      >::max(),            &xa),
+                JN(bsl::numeric_limits<double      >::min(),            &xa),
+                JN( 1e100 * 1e100,                                      &xa),
+                JN(-1e100 * 1e100,                                      &xa)
             };
 
-            for (long unsigned int i = 0;
-                 i < (sizeof(NUMBERS)/sizeof(*NUMBERS));
-                 ++i)
-            {
+            const bsl::size_t NUM_NUMBERS = sizeof  NUMBERS
+                                          / sizeof *NUMBERS;
+
+            for (bsl::size_t i = 0; i < NUM_NUMBERS; ++i) {
+
                 const JsonNumber& N = NUMBERS[i];
                 const Obj         X(N, &xa);
 
                 if (veryVerbose) cout << "Value: " << N << endl;
 
-                int jsRC;
+                int jRC;
                 int nRC;
 
                 if (veryVerbose) cout <<
                                         "int Json::asShort(short *r) const;\n";
                 {
-                    short jsValue;
+                    short jValue;
                     short nValue;
-                    jsRC = X.asShort(&jsValue);
+                    jRC = X.asShort(&jValue);
                     nRC = N.asShort(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC,    nRC,    jRC    == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout << "int Json::asInt(int *r) const;\n";
                 {
-                    int jsValue;
+                    int jValue;
                     int nValue;
-                    jsRC = X.asInt(&jsValue);
+                    jRC = X.asInt(&jValue);
                     nRC = N.asInt(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout << "int Json::asLong(int *r) const;\n";
                 {
-                    long jsValue;
+                    long jValue;
                     long nValue;
-                    jsRC = X.asLong(&jsValue);
+                    jRC = X.asLong(&jValue);
                     nRC = N.asLong(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout <<
                                        "int Json::asLonglong(int *r) const;\n";
                 {
-                    long long jsValue;
+                    long long jValue;
                     long long nValue;
-                    jsRC = X.asLonglong(&jsValue);
+                    jRC = X.asLonglong(&jValue);
                     nRC = N.asLonglong(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "int Json::asInt64(Int64 *r) const;\n";
                 {
-                    bsls::Types::Int64 jsValue;
+                    bsls::Types::Int64 jValue;
                     bsls::Types::Int64 nValue;
-                    jsRC = X.asInt64(&jsValue);
+                    jRC = X.asInt64(&jValue);
                     nRC = N.asInt64(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout << "int Json::asUlong(int *r) const;\n";
                 {
-                    unsigned long jsValue;
+                    unsigned long jValue;
                     unsigned long nValue;
-                    jsRC = X.asUlong(&jsValue);
+                    jRC = X.asUlong(&jValue);
                     nRC = N.asUlong(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout <<
                                       "int Json::asUlonglong(int *r) const;\n";
                 {
-                    unsigned long long jsValue;
+                    unsigned long long jValue;
                     unsigned long long nValue;
-                    jsRC = X.asUlonglong(&jsValue);
+                    jRC = X.asUlonglong(&jValue);
                     nRC = N.asUlonglong(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "int Json::asUshort(unsigned short *r) const;\n";
                 {
-                    unsigned short jsValue;
+                    unsigned short jValue;
                     unsigned short nValue;
-                    jsRC = X.asUshort(&jsValue);
+                    jRC = X.asUshort(&jValue);
                     nRC = N.asUshort(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "int Json::asUint(unsigned int *r) const;\n";
                 {
-                    unsigned int jsValue;
+                    unsigned int jValue;
                     unsigned int nValue;
-                    jsRC = X.asUint(&jsValue);
+                    jRC = X.asUint(&jValue);
                     nRC = N.asUint(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "int Json::asUint64(Uint64 *r) const;\n";
                 {
-                    bsls::Types::Uint64 jsValue;
+                    bsls::Types::Uint64 jValue;
                     bsls::Types::Uint64 nValue;
-                    jsRC = X.asUint64(&jsValue);
+                    jRC = X.asUint64(&jValue);
                     nRC = N.asUint64(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "int Json::asDecimal64Exact(Decimal64 *r) "
                             "const;\n";
                 {
-                    bdldfp::Decimal64 jsValue;
+                    bdldfp::Decimal64 jValue;
                     bdldfp::Decimal64 nValue;
-                    jsRC = X.asDecimal64Exact(&jsValue);
+                    jRC = X.asDecimal64Exact(&jValue);
                     nRC = N.asDecimal64Exact(&nValue);
-                    ASSERTV(N, X, jsRC, nRC, jsRC == nRC);
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jRC, nRC, jRC == nRC);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout << "float Json::asFloat() const;\n";
                 {
-                    float jsValue;
+                    float jValue;
                     float nValue;
-                    jsValue = X.asFloat();
+                    jValue = X.asFloat();
                     nValue = N.asFloat();
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose) cout << "double Json::asDouble() const;\n";
                 {
-                    double jsValue;
+                    double jValue;
                     double nValue;
-                    jsValue = X.asDouble();
+                    jValue = X.asDouble();
                     nValue = N.asDouble();
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
                 if (veryVerbose)
                     cout << "Decimal64 Json::asDecimal64() const;\n";
                 {
-                    bdldfp::Decimal64 jsValue;
+                    bdldfp::Decimal64 jValue;
                     bdldfp::Decimal64 nValue;
-                    jsValue = X.asDecimal64();
+                    jValue = X.asDecimal64();
                     nValue = N.asDecimal64();
-                    ASSERTV(N, X, jsValue, nValue, jsValue == nValue);
+                    ASSERTV(N, X, jValue, nValue, jValue == nValue);
                 }
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asShort(short *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               short                        v;
+               mY.makeObject();   ASSERT_FAIL(Y.asShort(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asShort(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asShort(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asShort(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asShort(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asShort(&v));
+            }
+        }
+        if (veryVerbose) cout << "int Json::asInt(int *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               int                          v;
+               mY.makeObject();   ASSERT_FAIL(Y.asInt(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asInt(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asInt(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asInt(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asInt(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asInt(&v));
+            }
+        }
+        if (veryVerbose) cout << "int Json::asLong(long *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               long                         v;
+               mY.makeObject();   ASSERT_FAIL(Y.asLong(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asLong(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asLong(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asLong(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asLong(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asLong(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asLonglong(long long *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               long long                    v;
+               mY.makeObject();   ASSERT_FAIL(Y.asLonglong(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asLonglong(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asLonglong(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asLonglong(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asLonglong(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asLonglong(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asInt64(Int64 *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               bsls::Types::Int64           v;
+               mY.makeObject();   ASSERT_FAIL(Y.asInt64(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asInt64(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asInt64(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asInt64(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asInt64(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asInt64(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asUshort(unsigned short *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               unsigned short               v;
+               mY.makeObject();   ASSERT_FAIL(Y.asUshort(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asUshort(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asUshort(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asUshort(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asUshort(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asUshort(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asUint(unsigned int *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               unsigned int                 v;
+               mY.makeObject();   ASSERT_FAIL(Y.asUint(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asUint(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asUint(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asUint(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asUint(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asUint(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asUlong(unsigned long *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               unsigned long                v;
+               mY.makeObject();   ASSERT_FAIL(Y.asUlong(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asUlong(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asUlong(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asUlong(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asUlong(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asUlong(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asUlonglong(unsigned long long *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               unsigned long long           v;
+               mY.makeObject();   ASSERT_FAIL(Y.asUlonglong(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asUlonglong(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asUlonglong(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asUlonglong(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asUlonglong(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asUlonglong(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asUint64(Uint64 *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               bsls::Types::Uint64          v;
+               mY.makeObject();   ASSERT_FAIL(Y.asUint64(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asUint64(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asUint64(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asUint64(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asUint64(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asUint64(&v));
+            }
+        }
+        if (veryVerbose) cout <<
+                   "int Json::asDecimal64Exact(Decimal64 *r) const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               bdldfp::Decimal64            v;
+               mY.makeObject();   ASSERT_FAIL(Y.asDecimal64Exact(&v));
+               mY.makeArray();    ASSERT_FAIL(Y.asDecimal64Exact(&v));
+               mY.makeString(""); ASSERT_FAIL(Y.asDecimal64Exact(&v));
+               mY.makeNumber();   ASSERT_PASS(Y.asDecimal64Exact(&v));  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asDecimal64Exact(&v));
+               mY.makeNull();     ASSERT_FAIL(Y.asDecimal64Exact(&v));
+            }
+        }
+        if (veryVerbose) cout << "float Json::asFloat() const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               mY.makeObject();   ASSERT_FAIL(Y.asFloat());
+               mY.makeArray();    ASSERT_FAIL(Y.asFloat());
+               mY.makeString(""); ASSERT_FAIL(Y.asFloat());
+               mY.makeNumber();   ASSERT_PASS(Y.asFloat());  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asFloat());
+               mY.makeNull();     ASSERT_FAIL(Y.asFloat());
+            }
+        }
+        if (veryVerbose) cout << "double Json::asDouble() const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               mY.makeObject();   ASSERT_FAIL(Y.asDouble());
+               mY.makeArray();    ASSERT_FAIL(Y.asDouble());
+               mY.makeString(""); ASSERT_FAIL(Y.asDouble());
+               mY.makeNumber();   ASSERT_PASS(Y.asDouble());  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asDouble());
+               mY.makeNull();     ASSERT_FAIL(Y.asDouble());
+            }
+        }
+        if (veryVerbose) cout <<
+                   "Decimal64 Json::asDecimal64() const;\n";
+        {
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY; const Obj& Y = mY;
+               mY.makeObject();   ASSERT_FAIL(Y.asDecimal64());
+               mY.makeArray();    ASSERT_FAIL(Y.asDecimal64());
+               mY.makeString(""); ASSERT_FAIL(Y.asDecimal64());
+               mY.makeNumber();   ASSERT_PASS(Y.asDecimal64());  // PASS
+               mY.makeBoolean();  ASSERT_FAIL(Y.asDecimal64());
+               mY.makeNull();     ASSERT_FAIL(Y.asDecimal64());
             }
         }
         if (veryVerbose)
@@ -8598,6 +9693,18 @@ int main(int argc, char *argv[])
 
             ASSERTV(&result == &expected);
             ASSERTV(sam.isTotalSame());
+
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY(&sa); const Obj& Y = mY;
+               mY.makeObject().insert(key, 1); ASSERT_PASS(Y[key]);  // PASS
+               mY.makeArray();                 ASSERT_FAIL(Y[key]);
+               mY.makeString("");              ASSERT_FAIL(Y[key]);
+               mY.makeNumber();                ASSERT_FAIL(Y[key]);
+               mY.makeBoolean();               ASSERT_FAIL(Y[key]);
+               mY.makeNull();                  ASSERT_FAIL(Y[key]);
+            }
         }
         if (veryVerbose)
             cout << "const Json& Json::operator[](size_t index) const;\n";
@@ -8613,6 +9720,18 @@ int main(int argc, char *argv[])
 
             ASSERTV(&result == &expected);
             ASSERTV(sam.isTotalSame());
+
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY(&sa); const Obj& Y = mY;
+               mY.makeObject();                 ASSERT_FAIL(Y[0]);
+               mY.makeArray().pushBack(Json()); ASSERT_PASS(Y[0]);  // PASS
+               mY.makeString("");               ASSERT_FAIL(Y[0]);
+               mY.makeNumber();                 ASSERT_FAIL(Y[0]);
+               mY.makeBoolean();                ASSERT_FAIL(Y[0]);
+               mY.makeNull();                   ASSERT_FAIL(Y[0]);
+            }
         }
         if (veryVerbose) cout << "size_t Json::size() const;\n";
         {
@@ -8634,6 +9753,47 @@ int main(int argc, char *argv[])
                 const bsl::size_t           s = X.size();
                 ASSERTV(s, 1 == s);
                 ASSERTV(sam.isTotalSame());
+            }
+
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY(&sa); const Obj& Y = mY;
+               mY.makeObject();   ASSERT_PASS(Y.size());  // PASS
+               mY.makeArray();    ASSERT_PASS(Y.size());  // PASS
+               mY.makeString(""); ASSERT_FAIL(Y.size());
+               mY.makeNumber();   ASSERT_FAIL(Y.size());
+               mY.makeBoolean();  ASSERT_FAIL(Y.size());
+               mY.makeNull();     ASSERT_FAIL(Y.size());
+            }
+        }
+        if (veryVerbose) cout <<
+                   "bool Json::contains(const bsl::string_view& key) const;\n";
+        {
+            bsl::string_view     key = "key";
+            bslma::TestAllocator sa("supplied", veryVeryVeryVerbose);
+
+            Obj mX(&sa);  const Obj& X = mX;
+            mX.makeObject();
+            ASSERT(false == X.contains(key));
+            mX[key] = 1;
+            {
+                bslma::TestAllocatorMonitor sam(&sa);
+                const bool                  b = X.contains(key);
+                ASSERTV(b, true == b);
+                ASSERTV(sam.isTotalSame());
+            }
+
+            // Negative test
+            {
+               bsls::AssertTestHandlerGuard hG;
+               Obj                          mY(&sa); const Obj& Y = mY;
+               mY.makeObject();   ASSERT_PASS(Y.contains(key));  // PASS
+               mY.makeArray();    ASSERT_FAIL(Y.contains(key));
+               mY.makeString(""); ASSERT_FAIL(Y.contains(key));
+               mY.makeNumber();   ASSERT_FAIL(Y.contains(key));
+               mY.makeBoolean();  ASSERT_FAIL(Y.contains(key));
+               mY.makeNull();     ASSERT_FAIL(Y.contains(key));
             }
         }
 #if defined(BSLS_COMPILERFEATURES_SUPPORT_OPERATOR_EXPLICIT)
@@ -17122,6 +18282,7 @@ int main(int argc, char *argv[])
             ASSERTV(CONFIG, K, X, K == X);
             ASSERTV(da.numBlocksTotal(), 0 == da.numBlocksTotal());
         }
+
         for (char cfg = 'n'; cfg <= 't'; ++cfg) {
             const char        CONFIG = cfg;
             const bsl::size_t index = 0;
@@ -17184,6 +18345,39 @@ int main(int argc, char *argv[])
             ASSERTV(CONFIG, K, X, K == X);
             ASSERTV(da.numBlocksTotal(), 0 == da.numBlocksTotal());
         }
+
+        // `JsonArray::insert` to index literal `0`.
+        {
+            INSERT_AT_LITERAL_0(JsonArray, 0,     veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(JsonArray, 0L,    veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(JsonArray, 0LL,   veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(JsonArray, 0U,    veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(JsonArray, 0UL,   veryVeryVeryVerbose)
+            INSERT_AT_LITERAL_0(JsonArray, 0ULL,  veryVeryVeryVerbose)
+
+            // Negative test
+            {
+                bslma::TestAllocator ta("scratch", veryVeryVeryVerbose);
+
+                bsls::AssertTestHandlerGuard hG;
+
+                const Json lvalue("x", &ta);
+                JsonArray  mY(&ta);
+
+                ASSERT_FAIL(mY.insert(-1, lvalue));
+                ASSERT_PASS(mY.insert( 0, lvalue));
+
+                ASSERT_FAIL(mY.insert(-1, Json()));
+                ASSERT_PASS(mY.insert( 0, Json()));
+
+                const char  *values[]   = { "tom", "dick", "harry" };
+                bsl::size_t  NUM_VALUES = sizeof values / sizeof *values;
+
+                ASSERT_FAIL(mY.insert(-1, values, values + NUM_VALUES));
+                ASSERT_PASS(mY.insert( 0, values, values + NUM_VALUES));
+            }
+        }
+
         {
             bslma::TestAllocator sa("scratch", veryVeryVeryVerbose);
 
