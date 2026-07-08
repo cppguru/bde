@@ -4,6 +4,9 @@
 #include <bsls_ident.h>
 BSLS_IDENT("$Id$ $CSID$")
 
+#include <bsls_bsltestutil.h>  // for testing only
+#include <bsls_keyword.h>      // for testing only
+
 // ----------------------------------------------------------------------------
 // Copyright 2022 Bloomberg Finance L.P.
 //

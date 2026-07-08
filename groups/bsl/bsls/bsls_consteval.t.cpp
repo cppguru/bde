@@ -1,9 +1,8 @@
 // bsls_consteval.t.cpp                                               -*-C++-*-
 #include <bsls_consteval.h>
 
-#include <bsls_assert.h>
 #include <bsls_bsltestutil.h>
-#include <bsls_buildtarget.h>
+#include <bsls_keyword.h>
 
 #include <stdio.h>
 #include <stdlib.h>  // `atoi`
@@ -23,8 +22,6 @@
 // [ 2] USAGE EXAMPLE
 // [ 1] BREATHING TEST
 // ----------------------------------------------------------------------------
-
-namespace bsls = BloombergLP::bsls;
 
 // ============================================================================
 //                     STANDARD BSL ASSERT TEST FUNCTION
@@ -79,8 +76,8 @@ void aSsErT(bool condition, const char *message, int line)
 
 namespace {
 
-/// A statically-sized table for pointers to C strings for collecting
-/// information about macros.
+/// A statically-sized table of C-string pointers used to collect information
+/// about potentially-defined macros.
 template <size_t t_MAX_SIZE>
 class StaticStringsTable {
 
@@ -90,10 +87,9 @@ class StaticStringsTable {
 
   private:
     // DATA
-    const char *d_name_p;          // Name for this table
-
-    const char *d_table[k_MAX_SIZE];
-    size_t      d_index;
+    const char *d_name_p;              // name for this table
+    const char *d_table[k_MAX_SIZE];   // storage for string pointers
+    size_t      d_index;               // next free position in `d_table`
 
   public:
     // CREATORS
@@ -108,8 +104,8 @@ class StaticStringsTable {
 
     // MANIPULATORS
 
-    /// If there are no more free locations in the table report that error
-    /// to `stdout`.  Otherwise store the specified `string` to the next
+    /// If there are no more free locations in the table, report that error
+    /// to `stdout`.  Otherwise store the specified `string` at the next
     /// free location then increment the next free location.
     void pushBack(const char *string)
     {
@@ -137,7 +133,7 @@ class StaticStringsTable {
         return d_table[idx];
     }
 
-    /// Return the number of string pointers store in this object.
+    /// Return the number of string pointers stored in this object.
     size_t count() const
     {
         return d_index;
@@ -148,7 +144,7 @@ class StaticStringsTable {
 
 /// Return `23` if the invocation is evaluated at compile time.  If the
 /// invocation is not evaluated at compile time or if this cannot be
-/// determined return `17`.
+/// determined, return `17`.
 BSLS_CONSTEVAL_CONSTEXPR int testFunction()
 {
 #ifdef BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE
@@ -159,12 +155,9 @@ BSLS_CONSTEVAL_CONSTEXPR int testFunction()
 }
 
 /// Print a diagnostic message to standard output if any of the preprocessor
-/// flags of interest are defined, and their value if a value had been set.
-/// An "Enter" and "Leave" message is printed unconditionally so there is
-/// some report even if all of the flags are undefined.  Note that the macros
-/// are organized by thematic section, and the sections are mostly sorted
-/// alphanumerically except where comments indicate the reason for a different
-/// ordering.
+/// flags of interest are defined, and their values if set.  "Enter" and
+/// "Leave" messages are printed unconditionally so there is some report
+/// even if all of the flags are undefined.
 static void printFlags()
 {
     StaticStringsTable<32> undefinedMacros("undefinedMacros");
@@ -173,8 +166,7 @@ static void printFlags()
 /// not defined.
 #define D_MACRO(X) undefinedMacros.pushBack(#X);
 
-/// Print the name of the specified object-like macro named by `X`, and the
-/// source it expands to.
+/// Print the name and expansion of the specified object-like macro `X`.
 #define P_MACRO(X) puts("\t  " #X ":\t" STRINGIFY(X));
 
     puts("printFlags: Enter");
@@ -255,7 +247,7 @@ namespace usage_example
             return 23;                                                // RETURN
         }
     #endif
-        printf("Computing value\n");
+        puts("Computing value");
         return 17;                                                    // RETURN
     }
 // ```
@@ -280,8 +272,8 @@ namespace usage_example
     #endif
     }
 // ```
-// When `17 == i` or `17 == j`, `compute` will write "Computing value/n" to
-// `stdout`.  So, this message will be written once or twice depending on
+// When `17 == i` or `17 == j`, `compute` will write "Computing value\n" to
+// `stdout`, so this message will be written once or twice depending on
 // whether `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined.  The
 // variable `j` will always be `const`, and on platforms where the `compute`
 // function supports being `constexpr`, i.e. those where it can use
@@ -291,10 +283,10 @@ namespace usage_example
 //
 ///Example 2: Evolving a `constexpr` function
 ///------------------------------------------
-// Consider the situation where there exist two implementations of the same
-// algorithm, one of which satisfies the (stringent and pessimizing)
-// requirements needed to be a C++11 `constexpr` function, the other of which
-// takes advantage of runtime optimizations (such as hardware acceleration,
+// Consider the situation where there are two viable implementations of the
+// same algorithm, one of which satisfies the (stringent and pessimizing)
+// requirements needed to be a `constexpr` function, the other of which takes
+// advantage of runtime optimizations (such as hardware acceleration,
 // exceptions, or non-`constexpr` third-party libraries) that are not available
 // at compile time on any platform:
 // ```
@@ -313,7 +305,7 @@ namespace usage_example_2a
 // part of other `constexpr` functions that are themselves sometimes used at
 // runtime.  The `runtimeCompute` function, similarly, is likely used in many
 // contexts that could become `constexpr` or be evaluated at compile time, but
-// is hindering that due to itself not being `constexpr`.
+// is hindered due to itself not being `constexpr`.
 //
 // We can begin to transform `compiletimeCompute` and `runtimeCompute` to both
 // have improved performance wherever they might be used by moving their
@@ -345,13 +337,13 @@ namespace usage_example_2b
     }
 // ```
 // Now clients using `compiletimeCompute` at runtime, both within and outside
-// of other `constexpr` functions,  will get the benefits of an improved
+// of other `constexpr` functions, will get the benefits of an improved
 // algorithm without any need for change.
 //
-// Similarly, the implementation of `runtimeCompute` can be improved to be
-// opportunistically `constexpr` by taking advantage of
-// `BSLS_CONSTEVAL_CONSTEXPR`, potentially allowing some already existing
-// expressions to be compile time evaluated on more modern platforms:
+// Similarly, `runtimeCompute` can become opportunistically `constexpr` by
+// declaring the function with `BSLS_CONSTEVAL_CONSTEXPR`, which might
+// promote some existing evaluations from runtime to compile time on
+// platforms that can support it:
 // ```
 
     /// Return a complicated computed value based on the specified `input`.
@@ -397,15 +389,14 @@ namespace usage_example_2b
 
 int main(int argc, char **argv)
 {
-    int                 test = argc > 1 ? atoi(argv[1]) : 0;
-    bool             verbose = argc > 2;
-    bool         veryVerbose = argc > 3;
-    bool     veryVeryVerbose = argc > 4;
+    const int             test = argc > 1 ? atoi(argv[1]) : 0;
+    const bool         verbose = argc > 2;
+    const bool     veryVerbose = argc > 3;
+    const bool veryVeryVerbose = argc > 4;
 
-    (void)        veryVerbose;  // unused variable warning
-    (void)    veryVeryVerbose;  // unused variable warning
+    (void) veryVerbose;  // suppress unused variable warning
 
-    printf( "TEST %s CASE %d\n", __FILE__, test);
+    printf("TEST %s CASE %d\n", __FILE__, test);
 
     switch (test) { case 0:
       case 2: {
@@ -419,15 +410,15 @@ int main(int argc, char **argv)
         //
         // Plan:
         // 1. Incorporate usage example from header into test driver, remove
-        //    leading comment characters.
-        //    (C-1)
+        //    leading comment characters. (C-1)
         //
         // Testing:
         //   USAGE EXAMPLE
         // --------------------------------------------------------------------
 
-        if (verbose) printf("\nUSAGE EXAMPLE"
-                            "\n=============\n");
+        if (verbose) puts("\nUSAGE EXAMPLE"
+                          "\n=============");
+
         usage_example::test1();
         int i = usage_example::usage_example_2b::runtimeCompute(1729);
         BSLS_CONSTEVAL_CONSTEXPR_MEMBER int j =
@@ -442,22 +433,22 @@ int main(int argc, char **argv)
         // Concerns:
         // 1. This test driver builds on all platforms.
         //
-        // 2. That `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED` and
-        //    `BSLS_CONSTEVAL_CONSTEXPR` are defined.
+        // 2. `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED` and
+        //    `BSLS_CONSTEVAL_CONSTEXPR` are both defined.
         //
         // Plan:
-        // 1. Print out flags in veryVeryVerbose mode.
+        // 1. Print out flags in veryVeryVerbose mode. (C-1)
         //
         // 2. Generate a compilation error if either
         //    `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED` or
-        //    `BSLS_CONSTEVAL_CONSTEXPR` is undefined.
+        //    `BSLS_CONSTEVAL_CONSTEXPR` is undefined. (C-2)
         //
         // Testing:
         //   BREATHING TEST
         // --------------------------------------------------------------------
 
-        if (verbose) printf("\nBREATHING TEST"
-                            "\n==============\n");
+        if (verbose) puts("\nBREATHING TEST"
+                          "\n==============");
 
         if (veryVeryVerbose) printFlags();
 
@@ -483,14 +474,14 @@ int main(int argc, char **argv)
 #endif
       } break;
       default: {
-        fprintf( stderr, "WARNING: CASE `%d` NOT FOUND.\n" , test);
+        fprintf(stderr, "WARNING: CASE `%d` NOT FOUND.\n", test);
         testStatus = -1;
       }
     }
 
     if (testStatus > 0) {
         printFlags();
-        fprintf( stderr, "Error, non-zero test status = %d.\n", testStatus );
+        fprintf(stderr, "Error, non-zero test status = %d.\n", testStatus);
     }
 
     return testStatus;

@@ -8,50 +8,57 @@ BSLS_IDENT("$Id: $")
 //@PURPOSE: Provide macros related to compile-time evaluation.
 //
 //@MACROS:
-//  BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED: `true` during constant evaluation
-//  BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE: undefined if inactive
 //  BSLS_CONSTEVAL_CONSTEXPR: `constexpr` if `IS_ACTIVE` defined
 //  BSLS_CONSTEVAL_CONSTEXPR_MEMBER: `constexpr` if `IS_ACTIVE`, else `const`
+//  BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED: `true` during constant evaluation
+//  BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE: undefined if inactive
+//
+//@SEE_ALSO: bsls_keyword
 //
 //@DESCRIPTION: This component provides preprocessor macros that, when
-// possible, will identify if a function is being evaluated at compile time.
-// This enables branching to avoid the use of constructs that would not be
-// valid to evaluate at compile time.  When available, the
+// possible, will identify whether a function is being evaluated at compile
+// time.  This enables branching to avoid the use of constructs that would not
+// be valid to evaluate at compile time.  When available, the
 // `std::is_constant_evaluated()` function will be used.  On some platforms
-// where that is unavailable a compiler intrinsic will be used instead.
-// Finally, when no option for this functionality is available the
-// `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED` macro will expand to nothing and
+// where that is unavailable, a compiler intrinsic will be used instead.
+// Finally, when no option for this functionality is available, the
+// `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED` macro will expand to `false` and
 // `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` will not be defined.  To
 // ease writing declarations of functions where there is conditionally
 // available compile-time behavior, `BSLS_CONSTEVAL_CONSTEXPR` is defined to be
 // equivalent to `constexpr` if
-// `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined.
+// `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined.  Note that the
+// `BSLS_CONSTEVAL_CONSTEXPR` macro is distinct from the
+// `BSLS_KEYWORD_CONSTEXPR*` family in `bsls_keyword`: the former is defined
+// according to whether the Standard Library function (or a suitable intrinsic
+// replacement) is available, whereas the latter are defined according to
+// which version of the C++ language is enabled.
 //
 ///Macro Reference
 ///---------------
 // This section documents the preprocessor macros defined in this component.
 //
 //: `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED`
-//:     This macro expands to `std::is_constant_evaluated` when it is
+//:     This macro expands to `std::is_constant_evaluated()` when it is
 //:     available, or to a compiler intrinsic with equivalent functionality if
-//:     available, else, it expands to nothing.
+//:     available; otherwise it expands to `false`.
 //
 //: `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE`
-//:     This macro is defined to 1 if `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED`
+//:     This macro is defined to `1` if `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED`
 //:     can be used to identify compile-time evaluation, and is undefined
 //:     otherwise.
 //
 //: `BSLS_CONSTEVAL_CONSTEXPR`
 //:     This macro is defined to be `constexpr` if
-//:     `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined, otherwise
+//:     `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined; otherwise
 //:     it is defined as empty.
 //
 //: `BSLS_CONSTEVAL_CONSTEXPR_MEMBER`
-//:      This macro is defined to be `constexpr` if
-//:      `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined;
-//:      otherwise it is `const`.  This should be applied to variables and
-//:      member variables that should be initialized by a function that is
-//:      `BSLS_CONSTEVAL_CONSTEXPR`.
+//:     This macro is defined to be `constexpr` if
+//:     `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined;
+//:     otherwise it is `const`.  This should be applied to variables and
+//:     member variables that should be initialized by a function that is
+//:     `BSLS_CONSTEVAL_CONSTEXPR`.
 //
 ///Usage
 ///-----
@@ -62,17 +69,17 @@ BSLS_IDENT("$Id: $")
 // In this simple example, the macros are used to determine when it is
 // permissible to log a message to `stdout`.
 // ```
+// /// Return `23` if the invocation is evaluated at compile time and that
+// /// is detectable, otherwise print a diagnostic message to `stdout` and
+// /// return `17`.
 // BSLS_CONSTEVAL_CONSTEXPR int compute()
-//     // Return '23' if the invocation is evaluated at compile time and that
-//     // is detectable, otherwise print a diagnostic message to 'stdout' and
-//     // return '17'.
 // {
 // #ifdef BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE
 //     if (BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED) {
 //         return 23;                                                // RETURN
 //     }
 // #endif
-//     printf("Computing value\n");
+//     puts("Computing value");
 //     return 17;                                                    // RETURN
 // }
 // ```
@@ -81,9 +88,9 @@ BSLS_IDENT("$Id: $")
 // errors.  Below, this function is evaluated in both cases, and the difference
 // in behavior is observed.
 // ```
+// /// Invoke `compute` in both a const and non-const initialization,
+// /// verifying the expected results.
 // void test1()
-//     // Invoke 'compute' in both a const and non-const initialization,
-//     // verifying the expected results.
 // {
 //                                     int i = compute();
 //     BSLS_CONSTEVAL_CONSTEXPR_MEMBER int j = compute();
@@ -96,8 +103,8 @@ BSLS_IDENT("$Id: $")
 // #endif
 // }
 // ```
-// When `17 == i` or `17 == j`, `compute` will write "Computing value/n" to
-// `stdout`.  So, this message will be written once or twice depending on
+// When `17 == i` or `17 == j`, `compute` will write "Computing value\n" to
+// `stdout`, so this message will be written once or twice depending on
 // whether `BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE` is defined.  The
 // variable `j` will always be `const`, and on platforms where the `compute`
 // function supports being `constexpr`, i.e. those where it can use
@@ -107,16 +114,17 @@ BSLS_IDENT("$Id: $")
 //
 ///Example 2: Evolving a `constexpr` function
 ///------------------------------------------
-// Consider the situation where there exist two implementations of the same
-// algorithm, one of which satisfies the (stringent and pessimizing)
-// requirements needed to be a C++11 `constexpr` function, the other of which
-// takes advantage of runtime optimizations (such as hardware acceleration,
+// Consider the situation where there are two viable implementations of the
+// same algorithm, one of which satisfies the (stringent and pessimizing)
+// requirements needed to be a `constexpr` function, the other of which takes
+// advantage of runtime optimizations (such as hardware acceleration,
 // exceptions, or non-`constexpr` third-party libraries) that are not available
 // at compile time on any platform:
 // ```
 // int runtimeCompute(int input);
+//
+// /// Return a complicated computed value based on the specified `input`.
 // BSLS_KEYWORD_CONSTEXPR int compiletimeCompute(int input);
-//     // Return a complicated computed value based on the specified 'input'.
 // ```
 // Assuming these functions were introduced long ago, it is likely they are
 // heavily used wherever valid throughout a codebase.  The `compiletimeCompute`
@@ -125,25 +133,25 @@ BSLS_IDENT("$Id: $")
 // part of other `constexpr` functions that are themselves sometimes used at
 // runtime.  The `runtimeCompute` function, similarly, is likely used in many
 // contexts that could become `constexpr` or be evaluated at compile time, but
-// is hindering that due to itself not being `constexpr`.
+// is hindered due to itself not being `constexpr`.
 //
 // We can begin to transform `compiletimeCompute` and `runtimeCompute` to both
 // have improved performance wherever they might be used by moving their
 // implementations to separate functions:
 // ```
+// /// Return a complicated computed value based on the specified `input`.
 // int runtimeComputeImpl(int input);
-//     // Return a complicated computed value based on the specified 'input'.
 //
+// /// Return a complicated computed value based on the specified `input`.
 // BSLS_KEYWORD_CONSTEXPR int compiletimeComputeImpl(int input);
-//     // Return a complicated computed value based on the specified 'input'.
 // ```
 // Then, for `compiletimeCompute` we can provide a new implementation that will
 // use the better runtime algorithm when possible, while remaining `constexpr`
 // on all of the platforms where it previously was `constexpr` (i.e., without
 // changing its declaration):
 // ```
+// /// Return a complicated computed value based on the specified `input`.
 // BSLS_KEYWORD_CONSTEXPR int compiletimeCompute(int input)
-//     // Return a complicated computed value based on the specified 'input'.
 // {
 // #ifdef BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE
 //     if (!BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED) {
@@ -154,16 +162,16 @@ BSLS_IDENT("$Id: $")
 // }
 // ```
 // Now clients using `compiletimeCompute` at runtime, both within and outside
-// of other `constexpr` functions,  will get the benefits of an improved
+// of other `constexpr` functions, will get the benefits of an improved
 // algorithm without any need for change.
 //
-// Similarly, the implementation of `runtimeCompute` can be improved to be
-// opportunistically `constexpr` by taking advantage of
-// `BSLS_CONSTEVAL_CONSTEXPR`, potentially allowing some already existing
-// expressions to be compile time evaluated on more modern platforms:
+// Similarly, `runtimeCompute` can become opportunistically `constexpr` by
+// declaring the function with `BSLS_CONSTEVAL_CONSTEXPR`, which might
+// promote some existing evaluations from runtime to compile time on
+// platforms that can support it:
 // ```
+// /// Return a complicated computed value based on the specified `input`.
 // BSLS_CONSTEVAL_CONSTEXPR int runtimeCompute(int input)
-//     // Return a complicated computed value based on the specified 'input'.
 // {
 // #ifdef BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE
 //     if (BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED) {
@@ -205,7 +213,7 @@ BSLS_IDENT("$Id: $")
 #endif // defined BSLS_COMPILERFEATURES_SUPPORT_CONSTEXPR_CPP14
 
 #if !defined(BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED)
-    #define BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED
+    #define BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED false
 #endif // !defined(BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED)
 
 #ifdef BSLS_CONSTEVAL_IS_CONSTANT_EVALUATED_IS_ACTIVE
@@ -216,7 +224,7 @@ BSLS_IDENT("$Id: $")
     #define BSLS_CONSTEVAL_CONSTEXPR_MEMBER const
 #endif
 
-#endif // INCLUDED_BSLS_CONSTEVAL
+#endif
 // ----------------------------------------------------------------------------
 // Copyright 2022 Bloomberg Finance L.P.
 //
