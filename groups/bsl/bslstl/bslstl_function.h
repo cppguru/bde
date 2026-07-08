@@ -1530,14 +1530,9 @@ RET bslstl::Function_Variadic<RET(ARGS...)>::operator()(ARGS... args) const
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
     // BDE_VERIFY pragma: pop
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    // Non-exception build
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     // It is not necessary to call 'std::forward<ARGS>' because 'args...'  is
     // not composed of forwarding references.  The arguments to 'invoker_p',

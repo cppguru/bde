@@ -15,32 +15,62 @@ BSLS_IDENT("$Id: $")
 //@SEE_ALSO: bslstl_function, bslstl_stdexceptionutil
 //
 //@DESCRIPTION: This component provides a `bsl::bad_function_call` exception
-// class.  This exception is thrown by `bsl::function::operator()` when the
-// function wrapper object has no target.  If `std::function` implementation is
-// available, `bsl::bad_function_call` is an alias to `std::bad_function_call`.
+// class when exceptions are enabled, and nothing otherwise.  This exception is
+// thrown by `bsl::function::operator()` when the function wrapper object has
+// no target.  If compiling as C++11 or later, `bsl::bad_function_call` is an
+// alias for `std::bad_function_call`.
 //
+///Usage
+///-----
+// This section illustrates intended use of this component.
+//
+///Example 1: A Degenerate Function Wrapper
+/// - - - - - - - - - - - - - - - - - - - -
+// Suppose we want to write a null functor, the functional equivalent of a
+// null pointer, which throws an exception when invoked.  We can use the
+// `bsl::bad_function_call` exception type as our common vocabulary for
+// reporting the invocation of functors when they are not in a callable state.
+//
+// First, we define the class and give it a call operator that unconditionally
+// throws:
+// ```
+// struct EmptyFunction {
+//     void operator()() const { BSLS_THROW(bsl::bad_function_call()); }
+// };
+// ```
+// Then, we invoke the call operator inside a `try` block and confirm that the
+// expected exception type is caught:
+// ```
+// bool caught = false;
+// try {
+//     EmptyFunction()();
+// }
+// catch (const bsl::bad_function_call&) {
+//     caught = true;
+// }
+// assert(caught);
+// ```
 
 #include <bslscm_version.h>
 
+#include <bsls_buildtarget.h>
+#include <bsls_compilerfeatures.h>
 #include <bsls_exceptionutil.h>
-#include <bsls_keyword.h>
-#include <bsls_libraryfeatures.h>
 
 #ifdef BDE_BUILD_TARGET_EXC
 
 #include <exception>
+#include <functional>  // for `std::bad_function_call` in C++11
 
-#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-#include <functional>  // for 'std::bad_function_call'
-#endif  //BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-
+#if BSLS_COMPILERFEATURES_FULL_CPP11
 namespace bsl {
-#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-typedef std::bad_function_call bad_function_call;
+    using std::bad_function_call;
+}  // close namespace bsl
 #else
-                          // =======================
-                          // class bad_function_call
-                          // =======================
+namespace bsl {
+                        // =======================
+                        // class bad_function_call
+                        // =======================
 
 class bad_function_call : public std::exception {
   public:
@@ -49,45 +79,18 @@ class bad_function_call : public std::exception {
     /// Create a `bad_function_call` object.  Note that this function is
     /// explicitly user-declared, to make it simple to declare `const`
     /// objects of this type.
-    bad_function_call() BSLS_KEYWORD_NOEXCEPT;
+    bad_function_call();
 
     // ACCESSORS
 
     /// Return a pointer to the string literal "bad_function_call", with a
     /// storage duration of the lifetime of the program.  Note that the
-    /// caller should *not* attempt to free this memory.  Note that the
-    /// `bsls_exceptionutil` macro `BSLS_NOTHROW_SPEC` is deliberately not
-    /// used here, as a number of standard libraries declare `what` in the
-    /// base `exception` class explicitly with the no-throw specification,
-    /// even in a build that may not recognize exceptions.
-    const char *what() const BSLS_EXCEPTION_VIRTUAL_NOTHROW
-                                                         BSLS_KEYWORD_OVERRIDE;
+    /// caller should *not* attempt to free this memory.
+    const char *what() const BSLS_EXCEPTION_VIRTUAL_NOTHROW;
 };
-
-// ============================================================================
-//                           INLINE DEFINITIONS
-// ============================================================================
-
-                         // -------------------------
-                         // class bad_function_call
-                         // -------------------------
-
-inline
-bad_function_call::bad_function_call() BSLS_KEYWORD_NOEXCEPT
-: std::exception()
-{
-}
-
-inline
-const char *bad_function_call::what() const BSLS_EXCEPTION_VIRTUAL_NOTHROW
-{
-    return "bad_function_call";
-}
-#endif  //BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-
 }  // close namespace bsl
-
-#endif  //BDE_BUILD_TARGET_EXC
+#endif  // BSLS_COMPILERFEATURES_FULL_CPP11
+#endif  // BDE_BUILD_TARGET_EXC
 #endif
 
 // ----------------------------------------------------------------------------

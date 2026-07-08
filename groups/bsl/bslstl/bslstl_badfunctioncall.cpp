@@ -4,6 +4,28 @@
 #include <bsls_ident.h>
 BSLS_IDENT("$Id$ $CSID$")
 
+#ifdef BDE_BUILD_TARGET_EXC
+namespace bsl {
+#if !BSLS_COMPILERFEATURES_FULL_CPP11
+
+                        // -----------------------
+                        // class bad_function_call
+                        // -----------------------
+
+bad_function_call::bad_function_call()
+: std::exception()
+{
+}
+
+const char *bad_function_call::what() const BSLS_EXCEPTION_VIRTUAL_NOTHROW
+{
+    return "bad_function_call";
+}
+#endif  // !BSLS_COMPILERFEATURES_FULL_CPP11
+
+}  // close namespace bsl
+#endif  // BDE_BUILD_TARGET_EXC
+
 // ----------------------------------------------------------------------------
 // Copyright 2020 Bloomberg Finance L.P.
 //

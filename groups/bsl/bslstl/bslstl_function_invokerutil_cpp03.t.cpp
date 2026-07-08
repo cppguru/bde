@@ -15,8 +15,8 @@
 // delimited regions of C++11 code, then this test driver is a minimal 'main'
 // program that tests nothing and is not '#include'd in the original.
 //
-// Generated on Wed Feb 18 17:01:35 2026
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.t.cpp
+// Generated on Wed Jul 08 17:48:01 2026
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.t.cpp
 
 // Expanded test driver only when compiling bslstl_function_invokerutil.cpp
 #ifdef COMPILING_BSLSTL_FUNCTION_INVOKERUTIL_T_CPP
@@ -40,7 +40,8 @@ using namespace BloombergLP;
 // [ 3] invokerForFunc(const FUNC& f); // `FUNC` == ptr to member function
 // [ 4] invokerForFunc(const FUNC& f); // `FUNC` == ptr to data member
 // [ 5] invokerForFunc(const FUNC& f); // `FUNC` == user-defined functor
-// [ 6] IsFuncInvocable<PROTOTYPE, FUNC>
+// [ 6] throwBadFunctionCall();
+// [ 7] IsFuncInvocable<PROTOTYPE, FUNC>
 //
 // ----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
@@ -87,6 +88,9 @@ void aSsErT(bool condition, const char *message, int line)
 #define P_           BSLS_BSLTESTUTIL_P_  // P(X) without '\n'.
 #define T_           BSLS_BSLTESTUTIL_T_  // Print a tab (w/o newline).
 #define L_           BSLS_BSLTESTUTIL_L_  // current Line number
+
+#define ASSERT_INVOKE_FAIL(EXPR) BSLS_ASSERTTEST_ASSERT_INVOKE_FAIL(EXPR)
+#define ASSERT_INVOKE_PASS(EXPR) BSLS_ASSERTTEST_ASSERT_INVOKE_PASS(EXPR)
 
 // ============================================================================
 //                                VERBOSITY
@@ -287,7 +291,7 @@ class DerivedAggregate : public BaseAggregate {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.t.cpp
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.t.cpp
 #ifndef BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT 13
 #endif
@@ -1127,7 +1131,7 @@ struct ArgGenerator<DeducibleMovableRef<TYPE> > : ArgGeneratorBase<TYPE> {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.t.cpp
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.t.cpp
 #ifndef BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT 13
 #endif
@@ -2583,11 +2587,19 @@ int main(int argc, char *argv[])
 
     printf("TEST " __FILE__ " CASE %d\n", test);
 
-    bslma::TestAllocator defaultAllocator("default", veryVeryVeryVerbose);
-    bslma::DefaultAllocatorGuard dag(&defaultAllocator);
+    // CONCERN: `BSLS_REVIEW` failures should lead to test failures.
+    bsls::ReviewFailureHandlerGuard reviewGuard(&bsls::Review::failByAbort);
 
-    bslma::TestAllocator globalAllocator("global", veryVeryVeryVerbose);
+    // CONCERN: In no case does memory come from the global allocator.
+    static bslma::TestAllocator globalAllocator("global", veryVeryVeryVerbose);
     bslma::Default::setGlobalAllocator(&globalAllocator);
+
+    // CONCERN: No memory leaks from the default allocator.
+    bslma::TestAllocator defaultAllocator("default", veryVeryVeryVerbose);
+    ASSERT(0 == bslma::Default::setDefaultAllocator(&defaultAllocator));
+
+    // Confirm no static initialization locked the default allocator
+    ASSERT(&defaultAllocator == bslma::Default::defaultAllocator());
 
     // `Function_Rep` requires an allocator at construction.  `Function_Rep` is
     // not the class under test, so there are no allocation tests.  Therefore,
@@ -2596,7 +2608,7 @@ int main(int argc, char *argv[])
     bslma::TestAllocator ta;
 
     switch (test) { case 0:  // Zero is always the leading case.
-      case 6: {
+      case 7: {
         // --------------------------------------------------------------------
         // TESTING `IsFuncInvocable<PROTOTYPE, FUNC>`
         //   This case tests that `IsFuncInvocable` correctly detects whether
@@ -3233,6 +3245,59 @@ int main(int argc, char *argv[])
 
 #endif // defined(BSLSTL_FUNCTION_INVOKERUTIL_SUPPORT_IS_FUNC_INVOCABLE)
 
+      } break;
+      case 6: {
+        // --------------------------------------------------------------------
+        // TESTING `throwBadFunctionCall`
+        //
+        // Concerns:
+        // 1. When exceptions are enabled, calling `throwBadFunctionCall`
+        //    throws `bsl::bad_function_call`.
+        //
+        // 2. When exceptions are disabled, calling `throwBadFunctionCall`
+        //    invokes the assertion violation handler with an appropriate
+        //    message.
+        //
+        // Plan:
+        // 1. When compiled with exceptions, wrap a call to
+        //    `throwBadFunctionCall` in a `try`/`catch` block and verify that
+        //    `bsl::bad_function_call` is caught.  (C-1)
+        //
+        // 2. Using the `bsls::AssertTestHandlerGuard`, verify that
+        //    `throwBadFunctionCall` fires an assertion when exceptions are
+        //    disabled.  (C-2)
+        //
+        // Testing:
+        //   throwBadFunctionCall();
+        // --------------------------------------------------------------------
+
+        if (verbose) printf("\nTESTING `throwBadFunctionCall`"
+                            "\n==============================\n");
+
+        typedef bslstl::Function_InvokerUtil Util;
+
+#ifdef BDE_BUILD_TARGET_EXC
+        if (verbose) printf("\tWith exceptions enabled.\n");
+        {
+            try {
+                Util::throwBadFunctionCall();
+                ASSERT(0 && "The exception was not thrown.");
+            }
+            catch (const bsl::bad_function_call&) {
+                // Expected code path.
+            }
+            catch (...) {
+                ASSERT(0 && "Unexpected exception type");
+            }
+        }
+#else
+        if (verbose) printf("\tWith exceptions disabled.\n");
+        {
+            bsls::AssertTestHandlerGuard hG;
+
+            ASSERT_INVOKE_FAIL(Util::throwBadFunctionCall());
+        }
+#endif
       } break;
       case 5: {
         // --------------------------------------------------------------------
@@ -4209,6 +4274,7 @@ int main(int argc, char *argv[])
       }
     }
 
+    // CONCERN: No memory leaks from the default allocator.
     ASSERTV(defaultAllocator.numBlocksInUse(),
             0 == defaultAllocator.numBlocksInUse());
 

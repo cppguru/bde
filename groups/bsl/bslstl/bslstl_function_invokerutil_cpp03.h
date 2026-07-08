@@ -21,8 +21,8 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Sun Sep  1 05:39:09 2024
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.h
+// Generated on Wed Jul 01 18:27:16 2026
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.h
 
 #ifdef COMPILING_BSLSTL_FUNCTION_INVOKERUTIL_H
 
@@ -120,6 +120,17 @@ struct Function_InvokerUtil {
     /// is no way to deduce it from the function arguments.
     template <class PROTOTYPE, class FUNC>
     static GenericInvoker *invokerForFunc(const FUNC& f);
+
+    /// Throw a `bsl::bad_function_call` exception in an exception-enabled
+    /// build; otherwise, invoke the currently installed assertion violation
+    /// handler.  Note that providing a function to throw an exception moves
+    /// the code generated to throw the exception into just one place rather
+    /// than inline in every function template instantiation that would call
+    /// it.  It also insulates the header files from the declaration of the
+    /// exception class itself, so that only clients catching
+    /// `bad_function_call` need to include its header.
+    BSLA_NORETURN
+    static void throwBadFunctionCall();
 };
 
                // =============================================
@@ -168,7 +179,7 @@ struct Function_InvokerUtilNullCheck<MEMTYPE CLASS::*> {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.h
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.h
 #ifndef BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT 13
 #endif
@@ -2796,7 +2807,7 @@ struct Function_InvokerUtil_Dispatch;
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.h
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.h
 #ifndef BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT 13
 #endif
@@ -4899,7 +4910,7 @@ Function_InvokerUtilNullCheck<MEMTYPE CLASS::*>::isNull(MEMTYPE CLASS::* f)
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function_invokerutil.h
+// Command line: sim_cpp11_features.py bslstl_function_invokerutil.h
 #ifndef BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_INVOKERUTIL_VARIADIC_LIMIT 13
 #endif

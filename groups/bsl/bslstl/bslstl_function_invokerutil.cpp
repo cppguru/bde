@@ -2,7 +2,23 @@
 #include <bslstl_function_invokerutil.h>
 
 #include <bsls_ident.h>
-BSLS_IDENT_RCSID(bslstl_function_invokerutil_cpp, "$Id$ $CSID$")
+BSLS_IDENT("$Id: $")
+
+#include <bslstl_badfunctioncall.h>
+
+#include <bsls_exceptionutil.h>
+
+namespace BloombergLP {
+namespace bslstl {
+
+BSLA_NORETURN
+void Function_InvokerUtil::throwBadFunctionCall()
+{
+    BSLS_THROW(bsl::bad_function_call());
+}
+
+}  // close package namespace
+}  // close enterprise namespace
 
 // ----------------------------------------------------------------------------
 // Copyright 2020 Bloomberg Finance L.P.

@@ -1,15 +1,50 @@
 // bslstl_badfunctioncall.t.cpp                                       -*-C++-*-
 #include <bslstl_badfunctioncall.h>
+
 #include <bslmf_issame.h>
 
-#include <bsls_asserttest.h>
+#include <bslma_default.h>
+#include <bslma_testallocator.h>
+
 #include <bsls_bsltestutil.h>
+#include <bsls_buildtarget.h>
+#include <bsls_compilerfeatures.h>
+#include <bsls_exceptionutil.h>
+#include <bsls_platform.h>
+#include <bsls_review.h>
+
+#include <algorithm>  // `swap` C++03
+#include <exception>
+#include <utility>    // `swap` C++11
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+// ============================================================================
+//              DISABLE TESTING WHEN EXCEPTIONS ARE NOT ENABLED
+// ----------------------------------------------------------------------------
+// This component provides `bsl::bad_function_call` only when exceptions are
+// enabled; otherwise the header defines nothing and there is nothing to test.
+
+#ifndef BDE_BUILD_TARGET_EXC
+int main(int argc, char *[])
+{
+    const bool verbose = argc > 2;
+    if (verbose) puts("This component has no content when exceptions "
+                      "are disabled.");
+    return -1;
+}
+#else
+
 using namespace BloombergLP;
+
+//=============================================================================
+//                       BUILD CONFIGURATION MACROS
+//-----------------------------------------------------------------------------
+
+/// Define this macro to enable compile-fail tests.
+//#define BSLSTL_BADFUNCTIONCALL_SHOW_NO_ADL    1
 
 // ============================================================================
 //                             TEST PLAN
@@ -19,23 +54,18 @@ using namespace BloombergLP;
 // The type under test is `bsl::bad_function_call`, an exception type whose
 // interface and contract is dictated by the C++ standard.  If
 // `std::bad_function_call` exception is available, we need to check that
-// `bsl::bad_function_call` is a typedef to the standard's exception type.  If
-// `std::bad_function_call` exception isn't available, we need to check that
+// `bsl::bad_function_call` is an alias of the standard's exception type.  If
+// `std::bad_function_call` exception is not available, we need to check that
 // `bsl::bad_function_call` satisfies the interface and contract of
 // `std::bad_function_call`.
-//
 // ----------------------------------------------------------------------------
-// creators:
 // [ 3] bad_function_call();
-//
-// accessors:
 // [ 3] const char *what() const;
-//
-// typedef:
-// [ 4] typedef bsl::bad_function_call
 // ----------------------------------------------------------------------------
 // [ 1] BREATHING TEST
-// [ 2] CONCERN: Methods qualified `noexcept` in standard are so.
+// [ 2] CONCERN: `bsl::bad_function_call` is `std::bad_function_call`
+// [ 4] CONCERN: `bsl::bad_function_call` can be thrown
+// [ 5] USAGE EXAMPLE
 
 // ============================================================================
 //                     STANDARD BSL ASSERT TEST FUNCTION
@@ -83,24 +113,58 @@ void aSsErT(bool condition, const char *message, int line)
 
 #define RUN_EACH_TYPE BSLTF_TEMPLATETESTFACILITY_RUN_EACH_TYPE
 
-// ============================================================================
-//                  NEGATIVE-TEST MACRO ABBREVIATIONS
-// ----------------------------------------------------------------------------
+//=============================================================================
+//                        DEFECT DETECTION MACROS
+//-----------------------------------------------------------------------------
 
-#define ASSERT_SAFE_PASS(EXPR) BSLS_ASSERTTEST_ASSERT_SAFE_PASS(EXPR)
-#define ASSERT_SAFE_FAIL(EXPR) BSLS_ASSERTTEST_ASSERT_SAFE_FAIL(EXPR)
-#define ASSERT_PASS(EXPR) BSLS_ASSERTTEST_ASSERT_PASS(EXPR)
-#define ASSERT_FAIL(EXPR) BSLS_ASSERTTEST_ASSERT_FAIL(EXPR)
-#define ASSERT_OPT_PASS(EXPR) BSLS_ASSERTTEST_ASSERT_OPT_PASS(EXPR)
-#define ASSERT_OPT_FAIL(EXPR) BSLS_ASSERTTEST_ASSERT_OPT_FAIL(EXPR)
+#if defined(BSLS_PLATFORM_CMP_MSVC)
+// An implicit copy constructor is specified to perform a memberwise copy of
+// direct bases and members, which does not involve name lookup.  MSVC's
+// implicit definition of a copy constructor attempts to cast the passed
+// `const Derived&` argument to `const Base&` to initialize each direct base,
+// producing for any repeated base classes an ambiguous cast that results in
+// compiler error C2594.
+# define BUG_REPEATED_BASE_BAD_COPY_CTOR   1
+#endif
 
 //=============================================================================
 //                         GLOBAL FUNCTIONS FOR TESTING
 //-----------------------------------------------------------------------------
 
-//=============================================================================
-//                             USAGE EXAMPLE
-//-----------------------------------------------------------------------------
+namespace bsl {
+/// This function can be called without explicit qualification or `using` via
+/// ADL, but only if the `bad_function_call` type is associated with the `bsl`
+/// namespace.
+void bslstl_badfunctioncall_show_ADL(bad_function_call &) {}
+
+#if defined(BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC)
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Winaccessible-base"
+#elif defined(BSLS_PLATFORM_CMP_MSVC)
+# pragma warning(push)
+# pragma warning(disable: 4584)
+#endif
+/// This class derives ambiguously from `bsl::bad_function_call` and
+/// `std::exception`, which means that a handler for `std::exception` will not
+/// catch it, allowing a later handler for `bsl::bad_function_call` to catch it
+/// instead.
+struct ambiguous_exception : bad_function_call, std::exception {
+#ifdef BUG_REPEATED_BASE_BAD_COPY_CTOR
+    ambiguous_exception() {}
+    ambiguous_exception(const ambiguous_exception& original)
+    : bad_function_call(original)  // unambiguous: direct base
+    , std::exception()             // value-initialize the `std::exception`
+                                   // direct base sub-object.
+    {}
+#endif
+};  // struct ambiguous_exception
+#if defined(BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC)
+# pragma GCC diagnostic pop
+#elif defined(BSLS_PLATFORM_CMP_MSVC)
+# pragma warning(pop)
+#endif
+
+}  // close namespace bsl
 
 //=============================================================================
 //                              MAIN PROGRAM
@@ -108,96 +172,205 @@ void aSsErT(bool condition, const char *message, int line)
 
 int main(int argc, char *argv[])
 {
-    int  test    = argc > 1 ? atoi(argv[1]) : 0;
-    bool verbose = argc > 2;
-    //  bool veryVerbose         = argc > 3;
-    //  bool veryVeryVerbose     = argc > 4;
-    //  bool veryVeryVeryVerbose = argc > 5;
+    const int                 test = argc > 1 ? atoi(argv[1]) : 0;
+    const bool             verbose = argc > 2;
+    const bool         veryVerbose = argc > 3;
+    const bool     veryVeryVerbose = argc > 4;
+    const bool veryVeryVeryVerbose = argc > 5;
+
+    (void)    veryVerbose;
+    (void)veryVeryVerbose;
 
     printf("TEST " __FILE__ " CASE %d\n", test);
 
-    switch (test) {
-      case 0:
-#ifdef BDE_BUILD_TARGET_EXC
+    // CONCERN: `BSLS_REVIEW` failures should lead to test failures.
+    bsls::ReviewFailureHandlerGuard reviewGuard(&bsls::Review::failByAbort);
+
+    // CONCERN: In no case does memory come from the global allocator.
+    static bslma::TestAllocator globalAllocator("global", veryVeryVeryVerbose);
+    bslma::Default::setGlobalAllocator(&globalAllocator);
+
+    // CONCERN: In no case does memory come from the default allocator.
+    bslma::TestAllocator defaultAllocator("default", veryVeryVeryVerbose);
+    ASSERT(0 == bslma::Default::setDefaultAllocator(&defaultAllocator));
+
+    // Confirm no static initialization locked the default allocator
+    ASSERT(&defaultAllocator == bslma::Default::defaultAllocator());
+
+    switch (test) { case 0:
       case 5: {
         // --------------------------------------------------------------------
+        // USAGE EXAMPLE
+        //   Extracted from component header file.
+        //
+        // Concerns:
+        // 1. The usage example provided in the component header file compiles,
+        //    links, and runs as shown.
+        //
+        // Plan:
+        // 1. Incorporate the usage example from the header into the test
+        //    driver, remove leading comment characters, and replace `assert`
+        //    with `ASSERT`.  (C-1)
+        //
+        // Testing:
+        //   USAGE EXAMPLE
+        // --------------------------------------------------------------------
+
+        if (verbose) puts("\nUSAGE EXAMPLE\n=============");
+
+///Example 1: A Degenerate Function Wrapper
+/// - - - - - - - - - - - - - - - - - - - -
+// Suppose we want to write a null functor, the functional equivalent of a
+// null pointer, which throws an exception when invoked.  We can use the
+// `bsl::bad_function_call` exception type as our common vocabulary for
+// reporting the invocation of functors when they are not in a callable state.
+//
+// First, we define the class and give it a call operator that unconditionally
+// throws:
+// ```
+    struct EmptyFunction {
+        void operator()() const { BSLS_THROW(bsl::bad_function_call()); }
+    };
+// ```
+// Then, we invoke the call operator inside a `try` block and confirm that the
+// expected exception type is caught:
+// ```
+    bool caught = false;
+    try {
+        EmptyFunction()();
+    }
+    catch (const bsl::bad_function_call&) {
+        caught = true;
+    }
+    ASSERT(caught);
+// ```
+      } break;
+      case 4: {
+        // --------------------------------------------------------------------
         // `bsl::bad_function_call` IS THROWABLE
+        //  The whole purpose of `bsl::bad_function_call` is to serve as an
+        //  exception, so we should confirm that we can throw and catch one.
         //
         // Concerns:
         // 1. `bad_function_call` can be used in a throw expression.
+        // 2. `bad_function_call` does not have an ambiguous base class.
         //
         // Plan:
-        // 1. For concern 1, throw an object of bsl::`bad_function_call` and
-        //    check that it was caught by the correct handler.
+        // 1. Throw an object of `bsl::bad_function_call` and confirm that it
+        //    is caught by the correct handler (C-1).
+        //
+        // 2. Throw an object of `bsl::bad_function_call` and confirm that it
+        //    is caught by a handler for `std::exception` before a handler for
+        //    `bsl::bad_function_call` (C-2).
+        //
+        // 3. Throw an object with an ambiguous base class of `std::exception`
+        //    to demonstrate that it will instead be caught by a later handler
+        //    for an unambiguous base.  Note that this is testing the test
+        //    idiom to complete the proof.
         //
         // Testing:
         //   CONCERN: `bsl::bad_function_call` can be thrown
         // --------------------------------------------------------------------
-        if (verbose) printf("\n'bsl::bad_function_call' IS THROWABLE"
-                            "\n======================================\n");
+        if (verbose) puts("\n`bsl::bad_function_call` IS THROWABLE"
+                          "\n======================================");
 
         bool correctCatch = false;
+
+        // Show that we can throw and catch a `bsl::bad_function_call` object.
         try
         {
             throw bsl::bad_function_call();
         }
-        catch(const bsl::bad_function_call&)
+        catch (const bsl::bad_function_call&)
         {
             correctCatch = true;
         }
         catch (...)
-        {}
+        {
+            correctCatch = false;
+        }
 
-        ASSERT(true == correctCatch);
+        ASSERT(correctCatch);
 
-      } break;
+#if defined(BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC)
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wpragmas"
+# pragma GCC diagnostic ignored "-Wexceptions"
+#elif defined(BSLS_PLATFORM_CMP_MSVC)
+// Warning C4286 reports that a later `catch` clause is unreachable because
+// an earlier one for a base type catches first; that arrangement is the
+// property under test here.
+# pragma warning(push)
+# pragma warning(disable: 4286)
+#endif
+        // Show that `std::exception` is not an ambiguous base.
+        correctCatch = false;
+        try
+        {
+            throw bsl::bad_function_call();
+        }
+        catch (const std::exception&)
+        {
+            correctCatch = true;
+        }
+        catch (const bsl::bad_function_call&)
+        {
+            correctCatch = false;
+        }
+        catch (...)
+        {
+            correctCatch = false;
+        }
 
-      case 4: {
-        // --------------------------------------------------------------------
-        // `bsl::bad_function_call` TYPEDEF
-        //
-        // Concerns:
-        // 1. The `bsl::bad_function_call` is a typedef for
-        //    `std::bad_function_call` if `std::bad_function_call` is
-        //     available.
-        //
-        // Plan:
-        // 1. For concern 1, if we're using CPP11 library, check that
-        //    `bsl::bad_function_call` is the same type as
-        //    `std::bad_function_call` using `bsl::is_same`.
-        //
-        // Testing:
-        //   typedef bsl::bad_function_call
-        // --------------------------------------------------------------------
-        if (verbose)
-            printf("\n'bsl::bad_function_call' TYPEDEF"
-                   "\n================================\n");
+        ASSERT(correctCatch);
 
-#ifdef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-        ASSERT(
-        (bsl::is_same<bsl::bad_function_call, std::bad_function_call>::value));
+        // Check the ambiguous case to confirm the test idiom.
+        correctCatch = false;
+        try
+        {
+            throw bsl::ambiguous_exception();
+        }
+        catch (const std::exception&)
+        {
+            correctCatch = false;
+        }
+        catch (const bsl::bad_function_call&)
+        {
+            correctCatch = true;
+        }
+        catch (...)
+        {
+            correctCatch = false;
+        }
+#if defined(BSLS_PLATFORM_HAS_PRAGMA_GCC_DIAGNOSTIC)
+# pragma GCC diagnostic pop
+#elif defined(BSLS_PLATFORM_CMP_MSVC)
+# pragma warning(pop)
+#endif
 
-#endif  //BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+        ASSERT(correctCatch);
       } break;
       case 3: {
         // --------------------------------------------------------------------
         // DEFAULT CONSTRUCTION AND `what` METHOD
         //
         // Concerns:
-        // 1. A `bad_function_call` object can be default constructed.
+        // 1. A `bad_function_call` object is default constructible.
         //
-        // 2. Invoking a `what` method on a `bad_function_call` object
-        //    returns a "bad_function_call" string.
+        // 2. Invoking the `what` method on a `bad_function_call` object
+        //    returns a "bad_function_call" string in C++03, or the
+        //    implementation-defined string from `std::bad_function_call` in
+        //    C++11 or later.
         //
-        // 3. `what` method can be invoked on a const `bad_function_call`
+        // 3. The `what` method can be invoked on a const `bad_function_call`
         //    object.
         //
         // Plan:
         // 1. For concern 1, default construct a `bad_function_call` object.
         //
-        // 2. For concern 2, invoke the `what` method on a
-        //    `bad_function_call` object and check that the returned string
-        //    is "bad_function_call".
+        // 2. For concern 2, invoke the `what` method on a `bad_function_call`
+        //    object and check that the returned string is "bad_function_call"
+        //    in C++03, or not an empty string in C++11 or later.
         //
         // 3. For concern 3, in step 2, use a const qualified
         //    `bad_function_call` object.
@@ -206,66 +379,93 @@ int main(int argc, char *argv[])
         //   bad_function_call();
         //   const char *what() const;
         // --------------------------------------------------------------------
-        if (verbose)
-            printf("\nDEFAULT CONSTRUCTION AND `what` METHOD"
-                   "\n======================================\n");
+        if (verbose) puts("\nDEFAULT CONSTRUCTION AND `what` METHOD"
+                          "\n======================================");
         const bsl::bad_function_call b;
-#ifndef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-        // string returned by `what()` method is implementation specific so we
-        // can only check our own implementation
-        ASSERT(0 == strcmp("bad_function_call", b.what()));
+        const char *message = b.what();
+#if !BSLS_COMPILERFEATURES_FULL_CPP11
+        // The string returned by `what()` method is implementation specific
+        // so we can only check our own implementation
+        ASSERTV(message,
+                0 != message && 0 == strcmp("bad_function_call", message));
 #else
-        ASSERT(0 != b.what() && 0 != strlen(b.what()));
-#endif  // #ifndef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
+        ASSERTV(message, 0 != message && 0 != strlen(message));
+#endif  // !BSLS_COMPILERFEATURES_FULL_CPP11
 
       } break;
       case 2: {
         // --------------------------------------------------------------------
-        // `noexcept` SPECIFICATION
+        // CONCERN: `bsl::bad_function_call` is `std::bad_function_call`
         //
         // Concerns:
-        // 1. The `noexcept` specification has been applied to
-        //    `bad_function_call` constructor as required by the standard.
+        // 1. If compiling as C++11 or later, `bsl::bad_function_call` is
+        //    `std::bad_function_call`; there is no `std::bad_function_call` in
+        //    C++03.
         //
-        // 2. The `noexcept` specification has been applied to
-        //    `bad_function_call` `what` method as required by the standard.
+        // 2. `bsl::bad_function_call` is associated with namespace `std`.
+        //
+        // 3. `bsl::bad_function_call` is associated with namespace `bsl` only
+        //    if the class is defined there, i.e., in C++03.
+        //
         // Plan:
-        // 1. Apply the unary `noexcept` operator to a `bad_function_call`
-        //    constructor and, for concern 1, confirm that calculated boolean
-        //    value matches the expected value.
+        // 1. If compiling as C++11 or later, using the `bsl::is_same` type
+        //    trait confirm that `bsl::bad_function_call` is the same type as
+        //    `bsl::bad_function_call`.  In C++03 there is nothing to test.
         //
-        // 2. Apply the unary `noexcept` operator to `bad_function_call`
-        //    `what` method and, for concern 2, confirm that calculated boolean
-        //    value matches the expected value.
+        // 2. Call the `std::swap` function with a `bsl::bad_function_call`
+        //    object, where the name is not found by ordinary name lookup and
+        //    only via ADL.
+        //
+        // 3. (Compile fail -- disable except for manual builds)
+        //    To demonstrate that `swap` is found only using ADL, try to `swap`
+        //    two `int` variables that have no namespace association.  This
+        //    test driver should fail to compile.
+        //
+        // 4. Create a function in namespace `bsl` that does not match the name
+        //    of anything in namespace `std`, and attempt to call it.  The call
+        //    will compile only in C++03.
+        //
+        // 5. Hiding code behind the `BSLSTL_BADFUNCTIONCALL_SHOW_NO_ADL`
+        //    macro, call the functions that are ADL tested in the other C++
+        //    branch relying on only ADL to show that they fail to compile.
         //
         // Testing:
-        //   CONCERN: Methods qualified `noexcept` in standard are so.
+        //   CONCERN: `bsl::bad_function_call` is `std::bad_function_call`
         // --------------------------------------------------------------------
 
         if (verbose)
-            printf("\n'noexcept' SPECIFICATION"
-                   "\n========================\n");
+            puts(
+            "\nCONCERN: `bsl::bad_function_call` is `std::bad_function_call`"
+            "\n=============================================================");
 
-            // N4835: 20.14.16.1 Class `bad_function_call` [func.wrap.badcall]
-            // ```
-            //     namespace std {
-            //       class bad_function_call: public std::exception {
-            //       public:
-            //         const char* what() const noexcept override;
-            //       };
-            //     } // namespace std
-            // ```
-#ifndef BSLS_LIBRARYFEATURES_HAS_CPP11_BASELINE_LIBRARY
-        // While noexcept specification is a standard requirement, at least one
-        // library implementation does not apply the noexcept specification
-        // correctly.
-        ASSERT(BSLS_KEYWORD_NOEXCEPT_AVAILABLE ==
-               BSLS_KEYWORD_NOEXCEPT_OPERATOR(bsl::bad_function_call()));
+#if BSLS_COMPILERFEATURES_FULL_CPP11
+        ASSERT(
+        (bsl::is_same<bsl::bad_function_call, std::bad_function_call>::value));
 
-        bsl::bad_function_call b;
-        ASSERT(BSLS_KEYWORD_NOEXCEPT_AVAILABLE ==
-               BSLS_KEYWORD_NOEXCEPT_OPERATOR(b.what()));
-#endif
+        // Do namespace association tests.
+        bsl::bad_function_call obj{};
+        swap(obj, obj);
+
+# ifdef BSLSTL_BADFUNCTIONCALL_SHOW_NO_ADL
+        int x = 0;
+        swap(x, x);
+
+        bslstl_badfunctioncall_show_ADL(obj);
+# endif
+#else
+        // There is no `std::bad_function_call` in C++03.
+
+        // Do namespace association tests.
+        bsl::bad_function_call obj = bsl::bad_function_call();
+        swap(obj, obj);
+
+        bslstl_badfunctioncall_show_ADL(obj);
+
+# ifdef BSLSTL_BADFUNCTIONCALL_SHOW_NO_ADL
+        int x = 0;
+        swap(x, x);
+# endif
+#endif  // BSLS_COMPILERFEATURES_FULL_CPP11
       } break;
       case 1: {
         // --------------------------------------------------------------------
@@ -277,33 +477,39 @@ int main(int argc, char *argv[])
         //    testing in subsequent test cases.
         //
         // Plan:
-        // 1. Perform and ad-hoc test of the primary modifiers and accessors.
+        // 1. Perform an ad-hoc test of the primary modifiers and accessors.
         //
         // Testing:
         //   BREATHING TEST
         // --------------------------------------------------------------------
 
-        if (verbose)
-            printf("\nBREATHING TEST"
-                   "\n==============\n");
-        bsl::bad_function_call  b;
-        const std::exception   *ptr = &b;
+        if (verbose) puts("\nBREATHING TEST\n==============");
+        bsl::bad_function_call b;
+        const std::exception *ptr = &b;
 
         ASSERT(0 != b.what());
         ASSERT(0 != ptr->what());
       } break;
-#endif  //BDE_BUILD_TARGET_EXC
       default: {
         fprintf(stderr, "WARNING: CASE `%d' NOT FOUND.\n", test);
         testStatus = -1;
       }
     }
 
+    // CONCERN: In no case does memory come from the default allocator.
+    ASSERTV(defaultAllocator.numBlocksTotal(),
+            0 == defaultAllocator.numBlocksTotal());
+
+    // CONCERN: In no case does memory come from the global allocator.
+    ASSERTV(globalAllocator.numBlocksTotal(),
+            0 == globalAllocator.numBlocksTotal());
+
     if (testStatus > 0) {
         fprintf(stderr, "Error, non-zero test status = %d.\n", testStatus);
     }
     return testStatus;
 }
+#endif  // BDE_BUILD_TARGET_EXC
 
 // ----------------------------------------------------------------------------
 // Copyright 2020 Bloomberg Finance L.P.

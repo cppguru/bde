@@ -121,6 +121,7 @@ BSLS_IDENT("$Id: $")
 #include <bslmf_memberfunctionpointertraits.h>
 #include <bslmf_movableref.h>
 
+#include <bsla_noreturn.h>
 #include <bsls_compilerfeatures.h>
 #include <bsls_keyword.h>
 #include <bsls_libraryfeatures.h>
@@ -238,6 +239,17 @@ struct Function_InvokerUtil {
     /// is no way to deduce it from the function arguments.
     template <class PROTOTYPE, class FUNC>
     static GenericInvoker *invokerForFunc(const FUNC& f);
+
+    /// Throw a `bsl::bad_function_call` exception in an exception-enabled
+    /// build; otherwise, invoke the currently installed assertion violation
+    /// handler.  Note that providing a function to throw an exception moves
+    /// the code generated to throw the exception into just one place rather
+    /// than inline in every function template instantiation that would call
+    /// it.  It also insulates the header files from the declaration of the
+    /// exception class itself, so that only clients catching
+    /// `bad_function_call` need to include its header.
+    BSLA_NORETURN
+    static void throwBadFunctionCall();
 };
 
                // =============================================

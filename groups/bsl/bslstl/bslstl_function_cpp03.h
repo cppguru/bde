@@ -21,8 +21,8 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Sun Aug 17 02:26:47 2025
-// Command line: sim_cpp11_features.pl bslstl_function.h
+// Generated on Wed Jul 01 17:28:51 2026
+// Command line: sim_cpp11_features.py bslstl_function.h
 
 #ifdef COMPILING_BSLSTL_FUNCTION_H
 
@@ -127,7 +127,7 @@ struct Function_ArgTypes<RET(ARG1, ARG2)> {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function.h
+// Command line: sim_cpp11_features.py bslstl_function.h
 #ifndef BSLSTL_FUNCTION_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_VARIADIC_LIMIT 13
 #endif
@@ -1803,7 +1803,7 @@ namespace BloombergLP {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function.h
+// Command line: sim_cpp11_features.py bslstl_function.h
 #ifndef BSLSTL_FUNCTION_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_VARIADIC_LIMIT 13
 #endif
@@ -2116,13 +2116,9 @@ RET bslstl::Function_Variadic<RET()>::operator()() const
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep);
 }
@@ -2135,13 +2131,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01)>::operator()(ARGS_01 args_01) const
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01);
 }
@@ -2157,13 +2149,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02);
@@ -2183,13 +2171,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2213,13 +2197,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2247,13 +2227,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2285,13 +2261,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2327,13 +2299,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2373,13 +2341,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2423,13 +2387,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2477,13 +2437,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2535,13 +2491,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2597,13 +2549,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2663,13 +2611,9 @@ RET bslstl::Function_Variadic<RET(ARGS_01,
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args_01,
                              args_02,
@@ -2706,13 +2650,9 @@ RET bslstl::Function_Variadic<RET(ARGS...)>::operator()(ARGS... args) const
 {
     Invoker *invoker_p = reinterpret_cast<Invoker*>(d_rep.invoker());
 
-#ifdef BDE_BUILD_TARGET_EXC
     if (! invoker_p) {
-        throw bsl::bad_function_call();
+        bslstl::Function_InvokerUtil::throwBadFunctionCall();
     }
-#else
-    BSLS_ASSERT_OPT(invoker_p);
-#endif
 
     return invoker_p(&d_rep, args...);
 }
@@ -2724,7 +2664,7 @@ namespace bslstl {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslstl_function.h
+// Command line: sim_cpp11_features.py bslstl_function.h
 #ifndef BSLSTL_FUNCTION_VARIADIC_LIMIT
 #define BSLSTL_FUNCTION_VARIADIC_LIMIT 13
 #endif
