@@ -297,11 +297,10 @@ int main(int argc, char *argv[])
 # pragma GCC diagnostic ignored "-Wpragmas"
 # pragma GCC diagnostic ignored "-Wexceptions"
 #elif defined(BSLS_PLATFORM_CMP_MSVC)
-// Warning C4286 reports that a later `catch` clause is unreachable because
-// an earlier one for a base type catches first; that arrangement is the
-// property under test here.
 # pragma warning(push)
 # pragma warning(disable: 4286)
+#elif defined(BSLS_PLATFORM_CMP_SUN)
+# pragma error_messages(off, catchderive)
 #endif
         // Show that `std::exception` is not an ambiguous base.
         correctCatch = false;
@@ -346,6 +345,8 @@ int main(int argc, char *argv[])
 # pragma GCC diagnostic pop
 #elif defined(BSLS_PLATFORM_CMP_MSVC)
 # pragma warning(pop)
+#elif defined(BSLS_PLATFORM_CMP_SUN)
+# pragma error_messages(default, catchderive)
 #endif
 
         ASSERT(correctCatch);
