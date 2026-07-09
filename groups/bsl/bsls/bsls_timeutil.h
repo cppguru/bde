@@ -15,7 +15,17 @@ BSLS_IDENT("$Id: $")
 //@DESCRIPTION: This component provides a set of platform-neutral pure
 // procedures to access real-time system clock functionality.  High-resolution
 // time functions intended for interval-timing return a time interval in
-// nanoseconds (1 nsec = 1E-9 sec) as a 64-bit integer.
+// nanoseconds (1 nsec = 1E-9 sec) as a 64-bit integer.  In addition to wall
+// time, this component provides process and thread CPU timers.  On platforms
+// where per-thread CPU timers are unavailable, thread timer methods return -1.
+//
+///Thread Timers
+///-------------
+// `bsls::TimeUtil::getThreadSystemTimer`,
+// `bsls::TimeUtil::getThreadUserTimer`, and
+// `bsls::TimeUtil::getThreadTimers` report CPU time consumed by the calling
+// thread.  On platforms where per-thread CPU timing APIs are unavailable,
+// these methods return -1 for each unavailable value.
 //
 ///Accuracy and Precision
 ///----------------------
@@ -92,10 +102,14 @@ BSLS_IDENT("$Id: $")
 //
 ///Usage
 ///-----
-// The following snippets of code illustrate how to use `bsls::TimeUtil`
-// functions to implement a very simple timer.  Only the most primitive
-// functionality is illustrated.  See the `bsls::Stopwatch` component for a
-// better example of a timer interface.
+// This section illustrates intended use of this component.
+//
+///Example 1: Implementing a Very Simple Timer
+///- - - - - - - - - - - - - - - - - - - - - -
+// In this example we illustrate how to use `bsls::TimeUtil` functions to
+// implement a very simple timer.  Only the most primitive functionality is
+// illustrated.  See the `bsls::Stopwatch` component for a better example of a
+// timer interface.
 // ```
 // // my_timer.h
 //
@@ -182,9 +196,41 @@ BSLS_IDENT("$Id: $")
 //         // ...
 //     }
 //     double dTs = ts.elapsedSystemTime();
-//     std::cout << "elapsed wall time:   " << dTw << std::endl
-//               << "elapsed user time:   " << dTu << std::endl
-//               << "elapsed system time: " << dTs << std::endl;
+//     printf("elapsed wall time:   %g\n"
+//            "elapsed user time:   %g\n"
+//            "elapsed system time: %g\n",
+//            dTw, dTu, dTs);
+// }
+// ```
+//
+///Example 2: Thread Timers
+/// - - - - - - - - - - - -
+// In this example we show how to use the thread CPU timers and how to detect
+// when they are unsupported on a given platform:
+// ```
+// bsls::Types::Int64 threadSystemStart;
+// bsls::Types::Int64 threadUserStart;
+// bsls::TimeUtil::getThreadTimers(&threadSystemStart, &threadUserStart);
+//
+// if (threadSystemStart >= 0 && threadUserStart >= 0) {
+//     // ... run code on the current thread ...
+//
+//     bsls::Types::Int64 threadSystemEnd;
+//     bsls::Types::Int64 threadUserEnd;
+//     bsls::TimeUtil::getThreadTimers(&threadSystemEnd, &threadUserEnd);
+//
+//     double dThreadSystem =
+//         (double)(threadSystemEnd - threadSystemStart) * 1.0E-9;
+//     double dThreadUser =
+//         (double)(threadUserEnd - threadUserStart) * 1.0E-9;
+//
+//     printf("elapsed thread system time: %g\n"
+//            "elapsed thread user time:   %g\n",
+//            dThreadSystem,
+//            dThreadUser);
+// }
+// else {
+//     printf("thread CPU timers are not supported on this platform\n");
 // }
 // ```
 
@@ -195,7 +241,8 @@ BSLS_IDENT("$Id: $")
     #include <time.h>
 #endif
 
-#if defined(BSLS_PLATFORM_OS_AIX) || defined(BSLS_PLATFORM_OS_FREEBSD) || defined(BSLS_PLATFORM_OS_DARWIN)
+#if defined(BSLS_PLATFORM_OS_AIX) || defined(BSLS_PLATFORM_OS_FREEBSD)        \
+ || defined(BSLS_PLATFORM_OS_DARWIN)
     #include <sys/time.h>
 #endif
 
@@ -252,25 +299,54 @@ struct TimeUtil {
     /// `initialize` has been called before.
     static Types::Int64 convertRawTime(OpaqueNativeTime rawTime);
 
-    /// Return the instantaneous values of a platform-dependent timer for
-    /// the current process system time in absolute nanoseconds referenced
-    /// to an arbitrary but fixed origin.  Note that this method is thread-
-    /// safe only if `initialize` has been called before.
+    /// Return the instantaneous values of a platform-dependent timer for the
+    /// current process system time in absolute nanoseconds referenced to an
+    /// arbitrary but fixed origin.  If the system call fails return -1.  Note
+    /// that this method is thread-safe only if `initialize` has been called
+    /// before.
     static Types::Int64 getProcessSystemTimer();
 
     /// Load into the specified `systemTimer` and `userTimer` the
     /// instantaneous values of platform-dependent system timer and user
     /// timer in absolute nanoseconds referenced to an arbitrary but fixed
-    /// origin.  Note that this method is thread-safe only if `initialize`
-    /// has been called before.
+    /// origin.  If the system call fails fill both time arguments with -1.
+    /// Note that this method is thread-safe only if `initialize` has been
+    /// called before.
     static void getProcessTimers(Types::Int64 *systemTimer,
                                  Types::Int64 *userTimer);
 
-    /// Return the instantaneous values of a platform-dependent timer for
-    /// the current process user time in absolute nanoseconds referenced to
-    /// an arbitrary but fixed origin.  Note that this method is thread-safe
-    /// only if `initialize` has been called before.
+    /// Return the instantaneous values of a platform-dependent timer for the
+    /// current process user time in absolute nanoseconds referenced to an
+    /// arbitrary but fixed origin.  If the system call fails return -1.  Note
+    /// that this method is thread-safe only if `initialize` has been called
+    /// before.
     static Types::Int64 getProcessUserTimer();
+
+    /// Return the instantaneous values of a platform-dependent timer for
+    /// the current thread system time in absolute nanoseconds referenced
+    /// to an arbitrary but fixed origin.  Return -1 on platforms where
+    /// per-thread CPU timers are unavailable or in case of a system call
+    /// failure.  Note that this method is thread-safe only if `initialize`
+    /// has been called before.
+    static Types::Int64 getThreadSystemTimer();
+
+    /// Load into the specified `systemTimer` and `userTimer` the
+    /// instantaneous values of platform-dependent system timer and user
+    /// timer for the current thread, in absolute nanoseconds referenced
+    /// to an arbitrary but fixed origin.  Load -1 into both timers on
+    /// platforms where per-thread CPU timers are unavailable or in case of a
+    /// system call failure.  Note that this method is thread-safe only if
+    /// `initialize` has been called before.
+    static void getThreadTimers(Types::Int64 *systemTimer,
+                                Types::Int64 *userTimer);
+
+    /// Return the instantaneous values of a platform-dependent timer for
+    /// the current thread user time in absolute nanoseconds referenced to
+    /// an arbitrary but fixed origin.  Return -1 on platforms where per-thread
+    /// CPU timers are unavailable or in case of a system call failure.  Note
+    /// that this method is thread-safe only if `initialize` has been called
+    /// before.
+    static Types::Int64 getThreadUserTimer();
 
     /// Return the instantaneous value of a platform-dependent system timer
     /// in absolute nanoseconds referenced to an arbitrary but fixed origin.

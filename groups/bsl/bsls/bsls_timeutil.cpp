@@ -1,4 +1,11 @@
 // bsls_timeutil.cpp                                                  -*-C++-*-
+
+// Required to expose `RUSAGE_THREAD` from `<sys/resource.h>` on Linux.  Must
+// be defined before including any system header.
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+    #define _GNU_SOURCE
+#endif
+
 #include <bsls_timeutil.h>
 
 #include <bsls_assert.h>
@@ -24,10 +31,13 @@ BSLS_IDENT("$Id$ $CSID$")
 #endif
 
 #if defined(BSLS_PLATFORM_OS_SOLARIS)
-    #include <sys/time.h>       // gethrtime()
+    #include <sys/time.h>           // gethrtime()
 #elif defined(BSLS_PLATFORM_OS_DARWIN)
-    #include <stdlib.h>         // abort()
-    #include <limits.h>         // LLONG_MIN
+    #include <stdlib.h>             // abort()
+    #include <limits.h>             // LLONG_MIN
+    #include <mach/mach.h>          // mach_thread_self(), thread_info()
+    #include <mach/mach_init.h>     // mach_thread_self()
+    #include <mach/thread_act.h>    // thread_info(), THREAD_BASIC_INFO
 #endif
 
 namespace BloombergLP {
@@ -47,31 +57,73 @@ struct UnixTimerUtil {
   private:
     // PRIVATE CLASS METHODS
 
-    /// Helper routine to be used by the public methods below: call the OS
-    /// APIs and handle errors.
+    /// Convert the specified `seconds` and `microseconds` to nanoseconds
+    /// and return the result.  The behavior is undefined unless
+    /// `seconds >= 0` and `0 <= microseconds < 1000000`.
+    template <class t_SECONDS, class t_MICROSECONDS>
+    static bsls::Types::Int64 toNanoseconds(t_SECONDS      seconds,
+                                            t_MICROSECONDS microseconds);
+
+    /// Helper routine to be used by the public methods below: call the OS APIs
+    /// and handle errors.
     static void systemProcessTimers(bsls::Types::Int64 *systemTimer,
                                     bsls::Types::Int64 *userTimer);
+
+    /// Helper routine to be used by the public thread-timer methods below:
+    /// call the OS APIs and handle errors.  On platforms where per-thread
+    /// CPU times are unavailable, load -1 into both timers.
+    static void systemThreadTimers(bsls::Types::Int64 *systemTimer,
+                                   bsls::Types::Int64 *userTimer);
 
   public:
     // CLASS METHODS
 
     /// Return converted to nanoseconds current value of system time as
-    /// returned by getrusage() if the call succeeds, and zero otherwise.
+    /// returned by `getrusage()` if the call succeeds, and -1 otherwise.
     static bsls::Types::Int64 systemTimer();
 
     /// Return converted to nanoseconds current value of user time as
-    /// returned by getrusage() if the call succeeds, and zero otherwise.
+    /// returned by `getrusage()` if the call succeeds, and -1 otherwise.
     static bsls::Types::Int64 userTimer();
 
-    /// Return converted to nanoseconds current values of system and user
-    /// times as returned by getrusage() if the call succeeds, and zero
-    /// values otherwise.
+    /// Return converted to nanoseconds current values of system and user times
+    /// as returned by `getrusage()` if the call succeeds, and -1 otherwise.
     static void processTimers(bsls::Types::Int64 *systemTimer,
                               bsls::Types::Int64 *userTimer);
+
+    /// Return converted to nanoseconds the current calling thread's system CPU
+    /// time as reported by the platform's per-thread timing API, and -1 if the
+    /// call fails or per-thread CPU times are unavailable on this platform.
+    static bsls::Types::Int64 threadSystemTimer();
+
+    /// Return converted to nanoseconds the current calling thread's user CPU
+    /// time as reported by the platform's per-thread timing API, and -1 if the
+    /// call fails or per-thread CPU times are unavailable on this platform.
+    static bsls::Types::Int64 threadUserTimer();
+
+    /// Load into the specified `systemTimer` and `userTimer` the current
+    /// calling thread's system and user CPU times in nanoseconds as reported
+    /// by the platform's per-thread timing API, and -1 values if the call
+    /// fails or per-thread CPU times are unavailable on this platform.
+    static void threadTimers(bsls::Types::Int64 *systemTimer,
+                             bsls::Types::Int64 *userTimer);
 };
 
 const bsls::Types::Int64 UnixTimerUtil::s_nsecsPerSecond = 1000 * 1000 * 1000;
 const bsls::Types::Int64 UnixTimerUtil::s_nsecsPerMicrosecond = 1000;
+
+template <class t_SECONDS, class t_MICROSECONDS>
+inline
+bsls::Types::Int64 UnixTimerUtil::toNanoseconds(t_SECONDS      seconds,
+                                                t_MICROSECONDS microseconds)
+{
+    BSLS_ASSERT_SAFE(0 <= seconds);
+    BSLS_ASSERT_SAFE(0 <= microseconds && microseconds < 1000000);
+
+    typedef bsls::Types::Int64 Int64;
+    return static_cast<Int64>(seconds)      * s_nsecsPerSecond +
+           static_cast<Int64>(microseconds) * s_nsecsPerMicrosecond;
+}
 
 inline
 void UnixTimerUtil::systemProcessTimers(bsls::Types::Int64 *systemTimer,
@@ -82,21 +134,94 @@ void UnixTimerUtil::systemProcessTimers(bsls::Types::Int64 *systemTimer,
     int rc = getrusage(RUSAGE_SELF, &usage);
     (void) rc;                   // silence unused variable warning
 
-    BSLS_ASSERT_SAFE(-1 != rc);  // Sanity check for validity of 'RUSAGE_SELF'
-                                 // and '&usage'.  Possible errors all require
-                                 // invalid input to 'getrusage'.
+    BSLS_ASSERT_SAFE(-1 != rc);  // Sanity check for validity of `RUSAGE_SELF`
+                                 // and `&usage`.  Possible errors all require
+                                 // invalid input to `getrusage`.
 
-    bsls::Types::Int64 timeSec  = 0;
-    bsls::Types::Int64 timeUsec = 0;
+    *systemTimer = toNanoseconds(usage.ru_stime.tv_sec,
+                                 usage.ru_stime.tv_usec);
 
-    timeSec  = static_cast<bsls::Types::Int64>(usage.ru_stime.tv_sec);
-    timeUsec = static_cast<bsls::Types::Int64>(usage.ru_stime.tv_usec);
-    *systemTimer = timeSec * s_nsecsPerSecond +
-                                              timeUsec * s_nsecsPerMicrosecond;
+    *userTimer = toNanoseconds(usage.ru_utime.tv_sec,
+                               usage.ru_utime.tv_usec);
+}
 
-    timeSec  = static_cast<bsls::Types::Int64>(usage.ru_utime.tv_sec);
-    timeUsec = static_cast<bsls::Types::Int64>(usage.ru_utime.tv_usec);
-    *userTimer = timeSec * s_nsecsPerSecond + timeUsec * s_nsecsPerMicrosecond;
+inline
+void UnixTimerUtil::systemThreadTimers(bsls::Types::Int64 *systemTimer,
+                                       bsls::Types::Int64 *userTimer)
+{
+#if defined(BSLS_PLATFORM_OS_DARWIN)
+    // On Darwin, `getrusage` does not support per-thread queries; use the
+    // Mach kernel's `thread_info` instead.
+
+    mach_port_t thread = mach_thread_self();
+    thread_basic_info_data_t info;
+    mach_msg_type_number_t   count = THREAD_BASIC_INFO_COUNT;
+
+    kern_return_t kr = thread_info(thread,
+                                   THREAD_BASIC_INFO,
+                                   reinterpret_cast<thread_info_t>(&info),
+                                   &count);
+
+    // `mach_thread_self` returns a send right which must be released.
+    (void)mach_port_deallocate(mach_task_self(), thread);
+
+    if (KERN_SUCCESS != kr) {
+        *systemTimer = -1;
+        *userTimer   = -1;
+        return;                                                       // RETURN
+    }
+
+    *systemTimer = toNanoseconds(info.system_time.seconds,
+                                 info.system_time.microseconds);
+
+    *userTimer = toNanoseconds(info.user_time.seconds,
+                               info.user_time.microseconds);
+
+#elif defined(RUSAGE_THREAD)
+    // Linux (since 2.6.26), FreeBSD (since 8.1), and other UNIXes that
+    // define `RUSAGE_THREAD` (NetBSD, OpenBSD).
+
+    struct rusage usage;
+
+    int rc = getrusage(RUSAGE_THREAD, &usage);
+    if (0 != rc) {
+        *systemTimer = -1;
+        *userTimer   = -1;
+        return;                                                       // RETURN
+    }
+
+    *systemTimer = toNanoseconds(usage.ru_stime.tv_sec,
+                                 usage.ru_stime.tv_usec);
+
+    *userTimer = toNanoseconds(usage.ru_utime.tv_sec,
+                               usage.ru_utime.tv_usec);
+
+#elif defined(RUSAGE_LWP)
+    // Solaris exposes per-LWP (lightweight process, i.e., kernel thread)
+    // resource usage via `RUSAGE_LWP`.
+
+    struct rusage usage;
+
+    int rc = getrusage(RUSAGE_LWP, &usage);
+    if (0 != rc) {
+        *systemTimer = -1;
+        *userTimer   = -1;
+        return;                                                       // RETURN
+    }
+
+    *systemTimer = toNanoseconds(usage.ru_stime.tv_sec,
+                                 usage.ru_stime.tv_usec);
+
+    *userTimer = toNanoseconds(usage.ru_utime.tv_sec,
+                               usage.ru_utime.tv_usec);
+
+#else
+    // No per-thread CPU-time API known on this UNIX (e.g., AIX, HP-UX,
+    // Cygwin).  Report -1 so callers can detect the situation.
+
+    *systemTimer = -1;
+    *userTimer   = -1;
+#endif
 }
 
 inline
@@ -126,6 +251,35 @@ void UnixTimerUtil::processTimers(bsls::Types::Int64 *systemTimer,
                                   bsls::Types::Int64 *userTimer)
 {
     systemProcessTimers(systemTimer, userTimer);
+}
+
+inline
+bsls::Types::Int64 UnixTimerUtil::threadSystemTimer()
+{
+    bsls::Types::Int64 sTimer;
+    bsls::Types::Int64 dummy;
+
+    systemThreadTimers(&sTimer, &dummy);
+
+    return sTimer;
+}
+
+inline
+bsls::Types::Int64 UnixTimerUtil::threadUserTimer()
+{
+    bsls::Types::Int64 uTimer;
+    bsls::Types::Int64 dummy;
+
+    systemThreadTimers(&dummy, &uTimer);
+
+    return uTimer;
+}
+
+inline
+void UnixTimerUtil::threadTimers(bsls::Types::Int64 *systemTimer,
+                                 bsls::Types::Int64 *userTimer)
+{
+    systemThreadTimers(systemTimer, userTimer);
 }
 #endif
 
@@ -164,60 +318,84 @@ struct WindowsTimerUtil {
     static const bsls::Types::Int64 s_nsecsPerUnit;
                                                 // size in nanoseconds
                                                 // of one time unit used
-                                                // by GetProcessTimes()
+                                                // by `GetProcessTimes()`
 
   private:
     // PRIVATE CLASS METHODS
-    static void systemProcessTimers(PULARGE_INTEGER systemTimer,
-                                    PULARGE_INTEGER userTimer);
-        // Helper routine to be used by the public methods below: call the OS
-        // APIs and handle errors.
+
+    /// Helper routine to be used by the public methods below: call the OS
+    /// APIs and handle errors by returning a non-zero value in case of an
+    /// error.
+    static int systemProcessTimers(PULARGE_INTEGER systemTimer,
+                                   PULARGE_INTEGER userTimer);
+
+    /// Helper routine to be used by the public thread-timer methods below:
+    /// call `GetThreadTimes` on the current thread.  Report errors by
+    /// returning a non-zero value.
+    static int systemThreadTimers(PULARGE_INTEGER systemTimer,
+                                  PULARGE_INTEGER userTimer);
 
   public:
     // CLASS METHODS
+
+    /// Initialize the static data used by `WindowsTimeUtil` (currently the
+    /// `s_initialTime` and the `s_timerFrequency` values).
     static void initialize();
-        // Initialize the static data used by 'WindowsTimeUtil' (currently the
-        // 's_initialTime' and the 's_timerFrequency' values).
 
+    /// Return converted to nanoseconds current value of kernel (system) time
+    /// as returned by `GetProcessTimes()` if the call succeeds, and -1
+    /// otherwise. The behavior is undefined unless `initialize` has been
+    /// called.
     static bsls::Types::Int64 systemTimer();
-        // Return converted to nanoseconds current value of kernel (system)
-        // time as returned by GetProcessTimes() if the call succeeds, and zero
-        // otherwise.  The behavior is undefined unless 'initialize' has been
-        // called.
 
+    /// Return converted to nanoseconds current value of user time as returned
+    /// by `GetProcessTimes()` if the call succeeds, and -1 otherwise.  The
+    /// behavior is undefined unless `initialize` has been called.
     static bsls::Types::Int64 userTimer();
-        // Return converted to nanoseconds current value of user time as
-        // returned by GetProcessTimes() if the call succeeds, and zero
-        // otherwise.  The behavior is undefined unless 'initialize' has been
-        // called.
 
+    /// Return converted to nanoseconds current value of kernel (system) and
+    /// user times as returned by `GetProcessTimes()` if the call succeeds, and
+    /// -1 otherwise.  The behavior is undefined unless `initialize` has been
+    /// called.
     static void processTimers(bsls::Types::Int64 *systemTimer,
                               bsls::Types::Int64 *userTimer);
-        // Return converted to nanoseconds current value of kernel (system) and
-        // user times as returned by GetProcessTimes() if the call succeeds,
-        // and zero otherwise.  The behavior is undefined unless 'initialize'
-        // has been called.
 
+    /// Return converted to nanoseconds current value of kernel (system) time
+    /// as returned by `GetThreadTimes()` on the current thread if the call
+    /// succeeds, and -1 otherwise.
+    static bsls::Types::Int64 threadSystemTimer();
+
+    /// Return converted to nanoseconds current value of user time as returned
+    /// by `GetThreadTimes()` on the current thread if the call succeeds, and
+    /// -1 otherwise.
+    static bsls::Types::Int64 threadUserTimer();
+
+    /// Return converted to nanoseconds current value of kernel (system) and
+    /// user times as returned by `GetThreadTimes()` on the current thread if
+    /// the call succeeds, and -1 otherwise.
+    static void threadTimers(bsls::Types::Int64 *systemTimer,
+                             bsls::Types::Int64 *userTimer);
+
+    /// Return converted to nanoseconds current value of wall time as per
+    /// Windows hardware timer, if available, uses `::ftime` otherwise.  The
+    /// behavior is undefined unless `initialize` has been called.
     static bsls::Types::Int64 wallTimer();
-        // Return converted to nanoseconds current value of wall time as per
-        // Windows hardware timer, if available, uses ::ftime otherwise.  The
-        // behavior is undefined unless 'initialize' has been called.
 
+    /// Return a machine-dependent value representing the current time.
+    /// `timeValue` must be converted by the `convertRawTime` method to
+    /// conventional units (nanoseconds).  This method is intended to
+    /// facilitate accurate timing of small segments of code, and care must be
+    /// used in interpreting the results.  The behavior is undefined unless
+    /// `initialize` has been called.  Note that this method is thread-safe
+    /// only if `initialize` has been called before.
     static bsls::Types::Int64 getTimerRaw();
-        // Return a machine-dependent value representing the current time.
-        // 'timeValue' must be converted by the 'convertRawTime' method to
-        // conventional units (nanoseconds).  This method is intended to
-        // facilitate accurate timing of small segments of code, and care must
-        // be used in interpreting the results.  The behavior is undefined
-        // unless 'initialize' has been called.  Note that this method is
-        // thread-safe only if 'initialize' has been called before.
 
+    /// Convert the specified `rawTime` to a value in nanoseconds, referenced
+    /// to an arbitrary but fixed origin, and return the result of the
+    /// conversion. The behavior is undefined unless `initialize` has been
+    /// called.  Note that this method is thread-safe only if `initialize` has
+    /// been called before.
     static bsls::Types::Int64 convertRawTime(bsls::Types::Int64 rawTime);
-        // Convert the specified 'rawTime' to a value in nanoseconds,
-        // referenced to an arbitrary but fixed origin, and return the result
-        // of the conversion.  The behavior is undefined unless 'initialize'
-        // has been called.  Note that this method is thread-safe only if
-        // 'initialize' has been called before.
 };
 
 bsls::AtomicOperations::AtomicTypes::Int
@@ -233,25 +411,25 @@ bsls::AtomicOperations::AtomicTypes::Int64
 const bsls::Types::Int64             WindowsTimerUtil::s_nsecsPerUnit   = 100;
 
 inline
-void WindowsTimerUtil::systemProcessTimers(PULARGE_INTEGER systemTimer,
-                                           PULARGE_INTEGER userTimer)
+int WindowsTimerUtil::systemProcessTimers(PULARGE_INTEGER systemTimer,
+                                          PULARGE_INTEGER userTimer)
 {
-    FILETIME crtnTm, exitTm, krnlTm, userTm;
+    FILETIME creationTime, exitTime, kernelTime, userTime;
 
     if (!::GetProcessTimes(::GetCurrentProcess(),
-                           &crtnTm,
-                           &exitTm,
-                           &krnlTm,
-                           &userTm)) {
-        systemTimer->QuadPart = 0;
-        userTimer->QuadPart   = 0;
-        return;                                                       // RETURN
+                           &creationTime,
+                           &exitTime,
+                           &kernelTime,
+                           &userTime)) {
+        return -1;                                                    // RETURN
     }
 
-    systemTimer->LowPart  = krnlTm.dwLowDateTime;
-    systemTimer->HighPart = krnlTm.dwHighDateTime;
-    userTimer->LowPart    = userTm.dwLowDateTime;
-    userTimer->HighPart   = userTm.dwHighDateTime;
+    systemTimer->LowPart  = kernelTime.dwLowDateTime;
+    systemTimer->HighPart = kernelTime.dwHighDateTime;
+    userTimer->LowPart    = userTime.dwLowDateTime;
+    userTimer->HighPart   = userTime.dwHighDateTime;
+
+    return 0;
 }
 
 inline
@@ -297,7 +475,9 @@ inline
 bsls::Types::Int64 WindowsTimerUtil::systemTimer()
 {
     ULARGE_INTEGER sTimer, dummy;
-    systemProcessTimers(&sTimer, &dummy);
+    if (0 != systemProcessTimers(&sTimer, &dummy)) {
+        return -1;                                                    // RETURN
+    }
 
     return sTimer.QuadPart * s_nsecsPerUnit;
 }
@@ -306,7 +486,9 @@ inline
 bsls::Types::Int64 WindowsTimerUtil::userTimer()
 {
     ULARGE_INTEGER dummy, uTimer;
-    systemProcessTimers(&dummy, &uTimer);
+    if (0 != systemProcessTimers(&dummy, &uTimer)) {
+        return -1;                                                    // RETURN
+    }
 
     return uTimer.QuadPart * s_nsecsPerUnit;
 }
@@ -316,7 +498,66 @@ void WindowsTimerUtil::processTimers(bsls::Types::Int64 *systemTimer,
                                      bsls::Types::Int64 *userTimer)
 {
     ULARGE_INTEGER sTimer, uTimer;
-    systemProcessTimers(&sTimer, &uTimer);
+    if (0 != systemProcessTimers(&sTimer, &uTimer)) {
+        *systemTimer = -1;
+        *userTimer   = -1;
+        return;                                                       // RETURN
+    }
+
+    *systemTimer = static_cast<bsls::Types::Int64>(sTimer.QuadPart)
+                                                              * s_nsecsPerUnit;
+    *userTimer = static_cast<bsls::Types::Int64>(uTimer.QuadPart)
+                                                              * s_nsecsPerUnit;
+}
+
+inline
+int WindowsTimerUtil::systemThreadTimers(PULARGE_INTEGER systemTimer,
+                                         PULARGE_INTEGER userTimer)
+{
+    FILETIME creationTime, exitTime, kernelTime, userTime;
+
+    if (!::GetThreadTimes(::GetCurrentThread(),
+                          &creationTime,
+                          &exitTime,
+                          &kernelTime,
+                          &userTime)) {
+        return -1;                                                    // RETURN
+    }
+
+    systemTimer->LowPart  = kernelTime.dwLowDateTime;
+    systemTimer->HighPart = kernelTime.dwHighDateTime;
+    userTimer->LowPart    = userTime.dwLowDateTime;
+    userTimer->HighPart   = userTime.dwHighDateTime;
+
+    return 0;
+}
+
+inline
+bsls::Types::Int64 WindowsTimerUtil::threadSystemTimer()
+{
+    bsls::Types::Int64 sTimer, uTimer;
+    threadTimers(&sTimer, &uTimer);
+    return sTimer;
+}
+
+inline
+bsls::Types::Int64 WindowsTimerUtil::threadUserTimer()
+{
+    bsls::Types::Int64 sTimer, uTimer;
+    threadTimers(&sTimer, &uTimer);
+    return uTimer;
+}
+
+inline
+void WindowsTimerUtil::threadTimers(bsls::Types::Int64 *systemTimer,
+                                    bsls::Types::Int64 *userTimer)
+{
+    ULARGE_INTEGER sTimer, uTimer;
+    if (0 != systemThreadTimers(&sTimer, &uTimer)) {
+        *systemTimer = -1;
+        *userTimer = -1;
+        return;                                                       // RETURN
+    }
 
     *systemTimer = static_cast<bsls::Types::Int64>(sTimer.QuadPart)
                                                               * s_nsecsPerUnit;
@@ -449,22 +690,22 @@ struct DarwinTimerUtil {
 
   private:
     // CLASS DATA
-    static bsls::Types::Uint64           s_initialTime;
-                                              // initial time for the Mach
-                                              // hardware timer
+    static bsls::Types::Uint64 s_initialTime;  // initial time for the Mach
+                                               // hardware timer
 
   public:
     // CLASS METHODS
+
+    /// Return converted to nanoseconds the current uptime as reported by
+    /// `clock_gettime_nsec_np`.
     static bsls::Types::Uint64 getNanosecondsUptime();
-        // Return converted to nanoseconds the current uptime as reported by
-        // clock_gettime_nsec_np.
 
+    /// Initialize the static data used by `DarwinTimerUtil` (currently the
+    /// `s_initialTime` value).
     static void initialize();
-        // Initialize the static data used by 'DarwinTimerUtil' (currently the
-        // 's_initialTime' value).
 
+    /// Return a machine-dependent value representing the current time.
     static bsls::Types::Uint64 getTimerRaw();
-        // Return a machine-dependent value representing the current time.
 };
 
 bsls::Types::Uint64 DarwinTimerUtil::s_initialTime    = {0};
@@ -472,10 +713,10 @@ bsls::Types::Uint64 DarwinTimerUtil::s_initialTime    = {0};
 inline
 bsls::Types::Uint64 DarwinTimerUtil::getNanosecondsUptime()
 {
-    // An earlier implementation used 'mach_absolute_time()', which is
+    // An earlier implementation used `mach_absolute_time()`, which is
     // considered deprecated (since it requires scaling on Apple Silicon).
     //
-    //: o https://developer.apple.com/documentation/kernel/1462446-mach_absolute_time
+    // * https://developer.apple.com/documentation/kernel/1462446-mach_absolute_time
 
     return static_cast<bsls::Types::Uint64>(
             clock_gettime_nsec_np(CLOCK_UPTIME_RAW));
@@ -536,7 +777,7 @@ TimeUtil::convertRawTime(TimeUtil::OpaqueNativeTime rawTime)
 #elif defined BSLS_PLATFORM_OS_AIX
 
     // Imp Note:
-    // 'time_base_to_time' takes much more time (~1.2 usec) than actually
+    // `time_base_to_time` takes much more time (~1.2 usec) than actually
     // collecting the raw time in the first place (<100 nsec).
 
     const Types::Int64 G = 1000000000;
@@ -598,7 +839,7 @@ void TimeUtil::getTimerRaw(TimeUtil::OpaqueNativeTime *timeValue)
 {
     // Historical Note: Older Sun machines (e.g., sundev2 circa 2003) exhibited
     // intermittent non-compliant (i.e., non-monotonic) behavior for function
-    // 'gethrtime'.  As of July 2004, no non-monotonic behavior has been seen
+    // `gethrtime`.  As of July 2004, no non-monotonic behavior has been seen
     // on any Sun machine.  The imp note in the next paragraph is no longer
     // valid, but is retained for archival purposes, and as a historical
     // caution.
@@ -614,14 +855,14 @@ void TimeUtil::getTimerRaw(TimeUtil::OpaqueNativeTime *timeValue)
 
 #if defined BSLS_PLATFORM_OS_SOLARIS
 
-    // 'gethrtime' has not been observed to fail on any 'sundev' machine.
+    // `gethrtime` has not been observed to fail on any `sundev` machine.
 
     timeValue->d_opaque = gethrtime();
 
 #elif defined BSLS_PLATFORM_OS_AIX
 
     // Imp Note:
-    // 'read_wall_time' is very fast (<100 nsec), and guaranteed monotonic per
+    // `read_wall_time` is very fast (<100 nsec), and guaranteed monotonic per
     // http://publib.boulder.ibm.com/infocenter/systems doc.  It has not been
     // observed to be non-monotonic when tested to better than 3 parts in 10^10
     // on an ibm dev host (the deprecated ibmTwo).  Converting the time to
@@ -631,12 +872,12 @@ void TimeUtil::getTimerRaw(TimeUtil::OpaqueNativeTime *timeValue)
 
 #elif defined(BSLS_PLATFORM_OS_LINUX) || defined(BSLS_PLATFORM_OS_CYGWIN)
 
-    // The call to 'clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts)' has never
+    // The call to `clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts)` has never
     // been observed to be non-monotonic when tested at better than 1 parts in
     // 10^9 on a linux dev host (the deprecated linxdevFive), in a tight loop.
     // However, not all users will own the process, and for multi-processor
     // systems the value returned may be meaningless.  Therefore, for the
-    // standard timer, the CLOCK_MONOTONIC clock is preferred.
+    // standard timer, the `CLOCK_MONOTONIC` clock is preferred.
     //..
     //         Clock ID            Performance (arbitrary but consistent test)
     // ------------------------    -------------------------------------------
@@ -657,9 +898,10 @@ void TimeUtil::getTimerRaw(TimeUtil::OpaqueNativeTime *timeValue)
 
     // A generic implementation having microsecond resolution is used.  There
     // is no attempt to defend against possible non-monotonic
-    // behavior. Together with the arithmetic to convert 'timeValue' to
-    // nanoseconds, the imp would cause bsls_stopwatch to profile at ~1.40 usec
-    // on AIX when compiled with /bb/util/version10-062009/usr/vacpp/bin/xlC_r.
+    // behavior. Together with the arithmetic to convert `timeValue` to
+    // nanoseconds, the imp would cause `bsls_stopwatch` to profile at
+    // ~1.40 usec on AIX when compiled with
+    // /bb/util/version10-062009/usr/vacpp/bin/xlC_r.
 
     gettimeofday(timeValue, 0);
 
@@ -701,6 +943,40 @@ void TimeUtil::getProcessTimers(Types::Int64 *systemTimer,
     UnixTimerUtil::processTimers(systemTimer, userTimer);
 #elif defined BSLS_PLATFORM_OS_WINDOWS
     WindowsTimerUtil::processTimers(systemTimer, userTimer);
+#else
+    #error "Don't know how to get nanosecond time for this platform"
+#endif
+}
+
+Types::Int64 TimeUtil::getThreadSystemTimer()
+{
+#if defined BSLS_PLATFORM_OS_UNIX
+    return UnixTimerUtil::threadSystemTimer();
+#elif defined BSLS_PLATFORM_OS_WINDOWS
+    return WindowsTimerUtil::threadSystemTimer();
+#else
+    #error "Don't know how to get nanosecond time for this platform"
+#endif
+}
+
+Types::Int64 TimeUtil::getThreadUserTimer()
+{
+#if defined BSLS_PLATFORM_OS_UNIX
+    return UnixTimerUtil::threadUserTimer();
+#elif defined BSLS_PLATFORM_OS_WINDOWS
+    return WindowsTimerUtil::threadUserTimer();
+#else
+    #error "Don't know how to get nanosecond time for this platform"
+#endif
+}
+
+void TimeUtil::getThreadTimers(Types::Int64 *systemTimer,
+                               Types::Int64 *userTimer)
+{
+#if defined BSLS_PLATFORM_OS_UNIX
+    UnixTimerUtil::threadTimers(systemTimer, userTimer);
+#elif defined BSLS_PLATFORM_OS_WINDOWS
+    WindowsTimerUtil::threadTimers(systemTimer, userTimer);
 #else
     #error "Don't know how to get nanosecond time for this platform"
 #endif
