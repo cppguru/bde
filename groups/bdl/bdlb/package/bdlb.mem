@@ -16,6 +16,7 @@ bdlb_doublecompareutil
 bdlb_float
 bdlb_functionoutputiterator
 bdlb_guid
+bdlb_guidformatter
 bdlb_guidutil
 bdlb_hashutil
 bdlb_indexspan
