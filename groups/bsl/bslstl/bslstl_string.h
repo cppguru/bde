@@ -61,6 +61,40 @@ BSLS_IDENT("$Id: $")
 // allocator installed at the time of the `basic_string`'s construction (see
 // `bslma_default`).
 //
+///Short String Optimization (SSO)
+///- - - - - - - - - - - - - - - -
+// The implementation of `bsl::string` avoids dynamic memory allocation when
+// the length of the string's content is short enough to be contained in the
+// footprint of the string object.  This is done to:
+//
+// * Vastly improve the efficiency of creating, destroying, copying, or moving
+//   a short `bsl::string` object.
+// * Improve locality by placing the string contents adjacent to the data that
+//   manage that content (e.g., size, capacity).
+//
+// Short string optimization (SSO) is a feature common to many implementations
+// of `std::string`.  The size of the in-footprint buffer depends on the
+// platform, the compiler used, and build parameters (e.g. 64 bit build).  One
+// can readily discover that limit by evaluating the capacity of an newly
+// created (empty) string.
+// ```
+//    const bsl::size_t ssoLimit = bsl::string()::capacity();
+// ```
+//
+// Awareness of the SSO is significant when:
+//
+// * Analysing patterns of allocations by string objects.  {Example 1} shows
+//   how SSO becomes visible when using `bslma::TestAllocator`.
+//
+// * Using a debugger look for the contents of string within the string object
+//   when `size()` is less than the SSO limit; otherwise, follow the data
+//   pointer to the allocated memory.
+//
+//   * Users of the `gdb` debugger may want to use `contrib/gdb-printers` of
+//     the `bde-tools` repository.  That facility implicitly handles the SSO
+//     details when showing the contents of a `bsl::string` (and handles other
+//     types as well).
+//
 ///Lexicographical Comparisons
 ///---------------------------
 // Two `basic_string`s `lhs` and `rhs` are lexicographically compared by first
