@@ -26,7 +26,7 @@ BSLS_IDENT("$Id: $")
 //
 // Note that this component has an unspecified minimum allocation size, and
 // therefore users trying to limit themselves to a fixed buffer should use
-// bdlsb_fixedmemoutstreambuf.
+// `bdlsb_fixedmemoutstreambuf`.
 //
 ///Streaming Architecture
 ///----------------------
@@ -55,7 +55,7 @@ BSLS_IDENT("$Id: $")
 // streaming non-character data, e.g., numeric values.
 //
 // First, we define our example stream class, `CapitalizingStream` (which we
-// will later test using 'bdlsb::MemOutStreamBuf):
+// will later test using `bdlsb::MemOutStreamBuf`):
 // ```
 // /// This class capitalizes lower-case ASCII characters that are output.
 // class CapitalizingStream {
@@ -147,13 +147,13 @@ BSLS_IDENT("$Id: $")
 #include <bslmf_nestedtraitdeclaration.h>
 
 #include <bsls_keyword.h>
-#include <bsls_types.h>
 
-#include <bsl_cstddef.h>
+#include <bsl_cstddef.h>    // `bsl::size_t`
 #include <bsl_cstdlib.h>
 #include <bsl_cstring.h>
 #include <bsl_ios.h>
-#include <bsl_streambuf.h>  // (char|int|pos|off|traits)_type
+#include <bsl_streambuf.h>  // `(char|int|pos|off|traits)_type`,
+                            // `bsl::streambuf`
 
 namespace BloombergLP {
 namespace bdlsb {
@@ -167,28 +167,13 @@ namespace bdlsb {
 /// allocator to supply memory.
 class MemOutStreamBuf : public bsl::streambuf {
 
-    // PRIVATE CONSTANTS
-    enum {
-        k_INITIAL_BUFFER_SIZE = 256,  // default initial buffer size
-
-        k_GROWTH_FACTOR       =   2   // geometric growth factor to use when
-                                      // resizing internal buffer
-
-#ifndef BDE_OMIT_INTERNAL_DEPRECATED
-      , BDESB_INITIAL_BUFFER_SIZE = k_INITIAL_BUFFER_SIZE
-      , BDESB_GROWTH_FACTOR       = k_GROWTH_FACTOR
-      , INITIAL_BUFFER_SIZE       = k_INITIAL_BUFFER_SIZE
-      , GROWTH_FACTOR             = k_GROWTH_FACTOR
-#endif // BDE_OMIT_INTERNAL_DEPRECATED
-    };
-
     // DATA
     bslma::Allocator *d_allocator_p;  // memory source for buffer memory
                                       // (held, not owned)
 
   private:
     // NOT IMPLEMENTED
-    MemOutStreamBuf(const MemOutStreamBuf&); // = delete;
+    MemOutStreamBuf(const MemOutStreamBuf&);            // = delete;
     MemOutStreamBuf& operator=(const MemOutStreamBuf&); // = delete;
 
   private:
@@ -196,10 +181,11 @@ class MemOutStreamBuf : public bsl::streambuf {
 
     /// Grow the size of the internal buffer to be at least large enough to
     /// fit the specified `newLength` characters.  The buffer size is grown
-    /// by the minimum power of `k_GROWTH_FACTOR` needed to accommodate the
-    /// new length, but with a final size not less than
-    /// `k_INITIAL_BUFFER_SIZE`.  This method has no effect if 'newLength <=
-    /// capacity()' holds before the call.
+    /// by the minimum power of
+    /// `MemOutStreamBuf_Util::k_GEOMETRIC_GROWTH_FACTOR` needed to accommodate
+    /// the new length, but with a final size not less than
+    /// `MemOutStreamBuf_Util::k_INITIAL_BUFFER_SIZE`.  This method has no
+    /// effect if 'newLength <= capacity()' holds before the call.
     void grow(bsl::size_t newLength);
 
   protected:
@@ -302,6 +288,36 @@ class MemOutStreamBuf : public bsl::streambuf {
 //                           INLINE DEFINITIONS
 // ============================================================================
 
+                         // ==========================
+                         // class MemOutStreamBuf_Util
+                         // ==========================
+
+struct MemOutStreamBuf_Util {
+
+    // CLASS DATA
+
+    static const bsl::size_t k_INITIAL_BUFFER_SIZE     = 256;
+                                           // default initial buffer size
+
+    static const bsl::size_t k_GEOMETRIC_GROWTH_FACTOR =   2;
+                                           // geometric growth factor to use
+                                           // when resizing internal buffer
+
+    static const bsl::size_t k_MAX_GEOMETRIC_GROWTH_LENGTH;
+                                           // largest buffer size to which
+                                           // `k_GEOMETRIC_GROWTH_FACTOR`
+                                           // can be applied (without overflow)
+
+    // CLASS METHODS
+
+    /// Return the capacity to be used to contain data having the specified
+    /// `newLength` when the current capacity is the specified
+    /// `currentCapacity`.  The returned value may be larger than `newLength`
+    /// to allow for growth without the need for reallocation.
+    static bsl::size_t computeNewCapacity(bsl::size_t newLength,
+                                          bsl::size_t currentCapacity);
+};
+
                          // ---------------------
                          // class MemOutStreamBuf
                          // ---------------------
@@ -321,7 +337,7 @@ MemOutStreamBuf::MemOutStreamBuf(bsl::size_t       numElements,
 {
     setp(0, 0);
     reserveCapacity(numElements == 0
-                    ? static_cast<bsl::streamsize>(k_INITIAL_BUFFER_SIZE)
+                    ? MemOutStreamBuf_Util::k_INITIAL_BUFFER_SIZE
                     : numElements);
 }
 

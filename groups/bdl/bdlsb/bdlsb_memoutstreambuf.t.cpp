@@ -15,6 +15,7 @@
 #include <bslmf_assert.h>
 
 #include <bsls_keyword.h>
+#include <bsls_platform.h>
 
 #include <bsl_algorithm.h>
 #include <bsl_cctype.h>
@@ -167,7 +168,8 @@ void aSsErT(bool condition, const char *message, int line)
 //                  GLOBAL TYPEDEFS/CONSTANTS FOR TESTING
 //-----------------------------------------------------------------------------
 
-typedef bdlsb::MemOutStreamBuf Obj;
+typedef bdlsb::MemOutStreamBuf      Obj;
+typedef bdlsb::MemOutStreamBuf_Util Obj_U;
 
 const size_t INIT_BUFSIZE           = 256;
 const size_t TWICE_INIT_BUFSIZE     = INIT_BUFSIZE * 2;
@@ -822,7 +824,7 @@ int main(int argc, char *argv[])
         // Fill mFILL with every printable ASCII character except space and
         // '!'
         const int CHAR_RANGE = '~' - '!';
-        for (size_t i = 0; i > INIT_BUFSIZE; ++i) {
+        for (size_t i = 0; i < INIT_BUFSIZE; ++i) {
             mFILL[i] = static_cast<char>('"' + (i % CHAR_RANGE));
         }
 
@@ -1143,14 +1145,17 @@ int main(int argc, char *argv[])
         //   `xsputn` increases buffer size by calling `grow` method in case of
         //   lack of space to write requested string.  We will test separately
         //   string writing and memory allocation.  Method `grow`, in its turn,
-        //   calculates necessary amount of memory and calls method
-        //   `reserveCapacity` that has been tested already.  So we need to
-        //   test only memory amount calculation.
-        //   Note that protected `xsputn` method is called by base class method
-        //   `sputn`.
+        //   calculates necessary amount of memory (via the
+        //   `computeNewCapacity` method) and calls method `reserveCapacity`
+        //   that has been tested already (see TC2).  So we need to test only
+        //   memory size calculation.  Note that protected `xsputn` method is
+        //   called by base class method `sputn`.
         //
         // Concerns:
         // 1. String of varying lengths are written correctly.
+        //
+        //    1. Lengths of greater than `INT_MAX` must be supported for 64-bit
+        //       CPUs and a significant fraction of `INT_MAX` for 32-bit CPUs.
         //
         // 2. Writing strings does not overwrite existing buffer contents.
         //
@@ -1169,6 +1174,23 @@ int main(int argc, char *argv[])
         //    exceeding current capacity.  Verify that enough memory for
         //    storing the string has been allocated.  (C-4)
         //
+        //    1. The set of values chosen illustrate that the intended capacity
+        //       growth algorithm -- doubling and a modified doubling when
+        //       doubling is no longer possible -- is implemented correctly.
+        //
+        //    2. There is at least one example of when the data written is
+        //       "large".  That value varies with CPU type and OS type.
+        //       The limit on maximum allocation varies considerably depending
+        //       on those factors and other system parameters.  The values
+        //       used in the tests were empirically determined to be the
+        //       largest that could be successfully run on current test
+        //       platforms.
+        //
+        //    3. The `computeNewCapacity` function (used implicitly the above
+        //       steps) is also tested stand-alone to confirm that it returns
+        //       the expected values even for sizes that too large to actually
+        //       allocate.
+        //
         // 3. Verify that, in appropriate build modes, defensive checks are
         //    triggered when an attempt is made to perform operations with
         //    invalid input parameters values (using the 'BSLS_ASSERTTEST_*
@@ -1182,7 +1204,6 @@ int main(int argc, char *argv[])
         if (verbose) cout << endl
                           << "XSPUTN TEST" << endl
                           << "===========" << endl;
-
         if (verbose) cout << "\nBasic sputn test." << endl;
         {
             Obj        mSB(INIT_BUFSIZE);
@@ -1219,14 +1240,16 @@ int main(int argc, char *argv[])
             }
         }
 
+        const bsl::size_t  SZ_INT_MAX = bsl::numeric_limits<int     >::max();
+#ifdef BSLS_PLATFORM_CPU_64_BIT
+        const bsl::size_t SZ_UINT_MAX = bsl::numeric_limits<unsigned>::max();
+#endif
+
         if (verbose) cout << "\n`grow` method test." << endl;
         {
-            const int IBMO  = INIT_BUFSIZE_MINUS_ONE;
-            const int IBPO  = INIT_BUFSIZE_PLUS_ONE;
+            const int IBMO  =  INIT_BUFSIZE_MINUS_ONE;
+            const int IBPO  =  INIT_BUFSIZE_PLUS_ONE;
             const int HIBPO = (INIT_BUFSIZE / 2) + 1;
-
-            char FILL[TWICE_INIT_BUFSIZE];
-            bsl::memset(FILL, 'a', TWICE_INIT_BUFSIZE);
 
             static const struct {
                 int    d_line;               // line number
@@ -1234,36 +1257,59 @@ int main(int argc, char *argv[])
                 size_t d_numCharsToWrite;    // number of characters to write
                 size_t d_expCapacity;        // expected object capacity
             } DATA[] = {
-               //LINE  INITIAL         CHARACTERS  EXPECTED
-               //      CAPACITY        TO WRITE    CAPACITY
-               //----  -------------   ----------  ---------------------
-               { L_,   0,              1,            INIT_BUFSIZE       },
-               { L_,   0,              IBMO,         INIT_BUFSIZE       },
-               { L_,   0,              IBPO,         TWICE_INIT_BUFSIZE },
-               { L_,   1,              1,            1                  },
-               { L_,   1,              HIBPO,        INIT_BUFSIZE       },
-               { L_,   1,              INIT_BUFSIZE, INIT_BUFSIZE       },
-               { L_,   1,              IBPO,         TWICE_INIT_BUFSIZE },
-               { L_,   4,              1,            4                  },
-               { L_,   4,              2,            4                  },
-               { L_,   4,              3,            4                  },
-               { L_,   4,              4,            4                  },
-               { L_,   4,              5,            8                  },
-               { L_,   4,              6,            8                  },
-               { L_,   4,              7,            8                  },
-               { L_,   4,              8,            8                  },
-               { L_,   4,              9,            16                 },
-               { L_,   4,              10,           16                 },
-               { L_,   4,              15,           16                 },
-               { L_,   4,              16,           16                 },
-               { L_,   4,              17,           32                 },
-               { L_,   INIT_BUFSIZE,   IBMO,         INIT_BUFSIZE       },
-               { L_,   INIT_BUFSIZE,   HIBPO,        INIT_BUFSIZE       },
-               { L_,   INIT_BUFSIZE,   INIT_BUFSIZE, INIT_BUFSIZE       },
-               { L_,   INIT_BUFSIZE,   IBPO,         TWICE_INIT_BUFSIZE },
-            };
+               //LINE  INITIAL       CHARACTERS      EXPECTED
+               //      CAPACITY      TO WRITE        CAPACITY
+               //----  ------------  ------------    ------------------
+               { L_,   0,            1,              INIT_BUFSIZE       },
+               { L_,   0,            IBMO,           INIT_BUFSIZE       },
+               { L_,   0,            IBPO,           TWICE_INIT_BUFSIZE },
+               { L_,   1,            1,              1                  },
+               { L_,   1,            HIBPO,          INIT_BUFSIZE       },
+               { L_,   1,            INIT_BUFSIZE,   INIT_BUFSIZE       },
+               { L_,   1,            IBPO,           TWICE_INIT_BUFSIZE },
+               { L_,   4,            1,              4                  },
+               { L_,   4,            2,              4                  },
+               { L_,   4,            3,              4                  },
+               { L_,   4,            4,              4                  },
+               { L_,   4,            5,              8                  },
+               { L_,   4,            6,              8                  },
+               { L_,   4,            7,              8                  },
+               { L_,   4,            8,              8                  },
+               { L_,   4,            9,              16                 },
+               { L_,   4,            10,             16                 },
+               { L_,   4,            15,             16                 },
+               { L_,   4,            16,             16                 },
+               { L_,   4,            17,             32                 },
+               { L_,   INIT_BUFSIZE, IBMO,           INIT_BUFSIZE       },
+               { L_,   INIT_BUFSIZE, HIBPO,          INIT_BUFSIZE       },
+               { L_,   INIT_BUFSIZE, INIT_BUFSIZE,   INIT_BUFSIZE       },
+               { L_,   INIT_BUFSIZE, IBPO,           TWICE_INIT_BUFSIZE },
 
+               // See P-2.2 in the "Plan" section of this test case.
+
+#if   defined(BSLS_PLATFORM_OS_WINDOWS)
+  #if   defined(BSLS_PLATFORM_CPU_32_BIT)
+               { L_,   0,            SZ_INT_MAX/8,   SZ_INT_MAX/8 +1    },
+  #elif defined(BSLS_PLATFORM_CPU_64_BIT)
+               { L_,   0,            SZ_INT_MAX/2,   SZ_INT_MAX/2 +1    },
+  #else
+        #error "Unknown CPU"
+  #endif
+#elif defined(BSLS_PLATFORM_OS_UNIX)
+  #if   defined(BSLS_PLATFORM_CPU_32_BIT)
+               { L_,   0,            SZ_INT_MAX/4,   SZ_INT_MAX/4 +1    },
+  #elif defined(BSLS_PLATFORM_CPU_64_BIT)
+               { L_,   0,            SZ_INT_MAX,    (SZ_INT_MAX+1)*1    },
+               { L_,   0,            SZ_INT_MAX*2,  (SZ_INT_MAX+1)*2    },
+  #else
+        #error "Unknown CPU"
+  #endif
+#else
+    #error "Unknown OS"
+#endif
+            };
             const size_t DATA_LEN = sizeof DATA / sizeof *DATA;
+
             for (size_t i = 0; i < DATA_LEN; ++i ) {
                 const int    LINE           = DATA[i].d_line;
                 const size_t INIT_CAPACITY  = DATA[i].d_initCapacity;
@@ -1271,22 +1317,105 @@ int main(int argc, char *argv[])
                 const size_t EXP_CAPACITY   = DATA[i].d_expCapacity;
 
                 if (veryVerbose) {
-                    T_ P_(i) P_(INIT_CAPACITY) P(CHARS_TO_WRITE)
+                    T_ P_(i) P_(LINE) P(INIT_CAPACITY)
+                                      P_(CHARS_TO_WRITE)
+                                      P(EXP_CAPACITY)
                 }
 
                 bslma::TestAllocator ta(veryVeryVerbose);
+                const bsl::string    FILL(CHARS_TO_WRITE, 'a', &ta);
+
                 Obj                  mSB(INIT_CAPACITY, &ta);
                 const Obj&           SB = mSB;
 
-                mSB.sputn(FILL, CHARS_TO_WRITE);
+                mSB.sputn(FILL.data(), CHARS_TO_WRITE);                 // TEST
 
                 // Estimate the buffer capacity by observing allocator
-                ASSERTV(LINE, EXP_CAPACITY   == ta.lastAllocatedNumBytes());
-                ASSERTV(LINE, CHARS_TO_WRITE == mSB.length());
-                ASSERTV(LINE, 0 == strncmp(SB.data(), FILL, CHARS_TO_WRITE));
+                ASSERTV(LINE, EXP_CAPACITY,     ta.lastAllocatedNumBytes(),
+                              EXP_CAPACITY   == ta.lastAllocatedNumBytes());
+                ASSERTV(LINE, CHARS_TO_WRITE == SB.length());
+                ASSERTV(LINE, 0 == strncmp(SB.data(),
+                                           FILL.data(),
+                                           CHARS_TO_WRITE));
 
                 // Estimate the buffer capacity by triggering next relocation
                 ASSERTV(LINE, EXP_CAPACITY == estimateCurrentCapacity(mSB));
+            }
+        }
+
+        if (verbose) cout << "\n`computeNewCapacity` method" << endl;
+        {
+            static const struct {
+                int    d_line;               // line number
+                size_t d_initCapacity;       // initial object capacity
+                size_t d_newLength;          // new length
+                size_t d_expCapacity;        // expected object capacity
+            } DATA[] = {
+               //LINE  INITIAL                      EXPECTED
+               //      CAPACITY    NEW LENGTH       CAPACITY
+               //----  ----------- ------------     ------------------
+               { L_,   4,           1,               4                 },
+               { L_,   4,           2,               4                 },
+               { L_,   4,           3,               4                 },
+               { L_,   4,           4,               4                 },
+               { L_,   4,           5,               8                 },
+               { L_,   4,           6,               8                 },
+               { L_,   4,           7,               8                 },
+               { L_,   4,           8,               8                 },
+               { L_,   4,           9,              16                 },
+               { L_,   4,          10,              16                 },
+               { L_,   4,          15,              16                 },
+               { L_,   4,          16,              16                 },
+               { L_,   4,          17,              32                 },
+
+#ifdef BSLS_PLATFORM_CPU_64_BIT
+               { L_,   0,          SZ_INT_MAX,      SZ_INT_MAX+1       },
+               { L_,   0,          SZ_INT_MAX+1,    SZ_INT_MAX+1       },
+               { L_,   0,          SZ_INT_MAX+2,   (SZ_INT_MAX+1)*2    }, // <=
+               { L_,   0,          SZ_INT_MAX+3,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+4,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+5,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+6,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+7,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+8,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX+9,   (SZ_INT_MAX+1)*2    },
+                                   // ...
+               { L_,   0,          SZ_INT_MAX*2,   (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX*2+1, (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX*2+2, (SZ_INT_MAX+1)*2    },
+               { L_,   0,          SZ_INT_MAX*2+3, (SZ_INT_MAX+1)*4    }, // <=
+               { L_,   0,          SZ_INT_MAX*2+4, (SZ_INT_MAX+1)*4    },
+
+               { L_,   0,          SZ_UINT_MAX,     SZ_UINT_MAX   + 1  },
+#endif
+               { L_,   0,          SIZE_MAX/2   ,   SIZE_MAX/2    + 1  },
+               { L_,   0,          SIZE_MAX/2 +1,  (SIZE_MAX/4)*3 + 2  }, // <=
+               { L_,   0,         (SIZE_MAX/4)*3,  (SIZE_MAX/8)*7 + 5  }, // <=
+
+               { L_,   0,          SIZE_MAX - 4,    SIZE_MAX - 2       },
+               { L_,   0,          SIZE_MAX - 3,    SIZE_MAX - 2       },
+               { L_,   0,          SIZE_MAX - 2,    SIZE_MAX - 1       },
+               { L_,   0,          SIZE_MAX - 1,    SIZE_MAX - 1       },
+               { L_,   0,          SIZE_MAX,        SIZE_MAX           }, // <=
+            };
+            const size_t NUM_DATA = sizeof DATA / sizeof *DATA;
+
+            for (size_t i = 0; i < NUM_DATA; ++i ) {
+                const int    LINE           = DATA[i].d_line;
+                const size_t INIT_CAPACITY  = DATA[i].d_initCapacity;
+                const size_t NEW_LENGTH     = DATA[i].d_newLength;
+                const size_t EXP_CAPACITY   = DATA[i].d_expCapacity;
+
+                if (veryVerbose) {
+                    T_ P_(i) P_(LINE) P_(INIT_CAPACITY) P_(NEW_LENGTH)
+                                                        P(EXP_CAPACITY)
+                }
+
+                const bsl::size_t newCapacity = Obj_U::computeNewCapacity(
+                                                                NEW_LENGTH,
+                                                                INIT_CAPACITY);
+                ASSERTV(LINE, EXP_CAPACITY,   newCapacity,
+                              EXP_CAPACITY == newCapacity);
             }
         }
 
@@ -1295,10 +1424,10 @@ int main(int argc, char *argv[])
             bsls::AssertTestHandlerGuard hG;
 
             Obj mSB(INIT_BUFSIZE);
-            ASSERT_PASS(mSB.sputn(0, 0));
+            ASSERT_PASS(mSB.sputn(0,        0));
             ASSERT_FAIL(mSB.sputn("hello", -1));
-            ASSERT_PASS(mSB.sputn("hello", 0));
-            ASSERT_PASS(mSB.sputn("hello", 1));
+            ASSERT_PASS(mSB.sputn("hello",  0));
+            ASSERT_PASS(mSB.sputn("hello",  1));
         }
       } break;
       case 5: {
@@ -1865,7 +1994,6 @@ int main(int argc, char *argv[])
                       { L_,   LARGE_CAPACITY,   LARGE_CAPACITY     },
                       { L_,   MAX_CAPACITY,     MAX_CAPACITY       }
                 };   // end table DATA
-
 
                 const size_t DATA_LEN = sizeof DATA / sizeof *DATA;
 

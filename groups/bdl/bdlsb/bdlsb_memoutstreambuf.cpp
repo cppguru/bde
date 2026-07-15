@@ -7,41 +7,73 @@ BSLS_IDENT_RCSID(bdlsb_memoutstreambuf_cpp,"$Id$ $CSID$")
 #include <bslmf_assert.h>
 #include <bsls_assert.h>
 
+#include <bsls_performancehint.h>
+
 #include <bsl_algorithm.h>
-#include <bsl_climits.h>
 #include <bsl_cstring.h>
 #include <bsl_limits.h>
 
-#include <bsls_performancehint.h>
-
 namespace BloombergLP {
 namespace bdlsb {
+                         // --------------------------
+                         // class MemOutStreamBuf_Util
+                         // --------------------------
+
+// CLASS DATA
+
+const bsl::size_t MemOutStreamBuf_Util::k_INITIAL_BUFFER_SIZE;
+const bsl::size_t MemOutStreamBuf_Util::k_GEOMETRIC_GROWTH_FACTOR;
+const bsl::size_t MemOutStreamBuf_Util::k_MAX_GEOMETRIC_GROWTH_LENGTH =
+           bsl::numeric_limits<bsl::size_t>::max() / k_GEOMETRIC_GROWTH_FACTOR;
+
+// CLASS METHODS
+
+bsl::size_t MemOutStreamBuf_Util::computeNewCapacity(
+                                                   bsl::size_t newLength,
+                                                   bsl::size_t currentCapacity)
+{
+    // Our first estimate of the needed capacity is the current capacity, or
+    // `k_INITIAL_BUFFER_SIZE` if there is no current capacity.
+    bsl::size_t newCapacity = 0 == currentCapacity
+                            ? k_INITIAL_BUFFER_SIZE
+                            : currentCapacity;
+
+    // If that first estimate is insufficient for the current need
+    // (`newLength`) grow that estimate.
+
+    if (newCapacity < newLength) {
+        if (BSLS_PERFORMANCEHINT_PREDICT_UNLIKELY(
+                                  k_MAX_GEOMETRIC_GROWTH_LENGTH < newLength)) {
+
+            // Cannot apply `k_GEOMETRIC_GROWTH_FACTOR` without overflow.
+            // Instead, claim half of the remaining range.  Exercise of this
+            // code is very unlikely on 64-bit builds where
+            // `k_MAX_GEOMETRIC_GROWTH_LIMIT` is (roughly) `9 x 10^18` bytes.
+
+            newCapacity =
+                     newLength +
+                     (bsl::numeric_limits<bsl::size_t>::max() - newLength) / 2;
+        }
+        else {
+            do {
+                newCapacity *= k_GEOMETRIC_GROWTH_FACTOR;
+            } while (newCapacity < newLength);
+        }
+    }
+
+    return newCapacity;
+}
 
                          // ---------------------
                          // class MemOutStreamBuf
                          // ---------------------
 
 // PRIVATE MANIPULATORS
-void MemOutStreamBuf::grow(size_t newLength)
+void MemOutStreamBuf::grow(bsl::size_t newLength)
 {
-    enum { k_MAX_PRE_GROW = INT_MAX / k_GROWTH_FACTOR };
-
-    bsl::size_t newCapacity = capacity();
-    if (0 == newCapacity) {
-        newCapacity = k_INITIAL_BUFFER_SIZE;
-    }
-
-    if (newCapacity < newLength) {
-        if (BSLS_PERFORMANCEHINT_PREDICT_UNLIKELY(newLength > k_MAX_PRE_GROW))
-        {
-            newCapacity = (INT_MAX/2 + newLength/2) | 1;
-        }
-        else {
-            do {
-                newCapacity *= k_GROWTH_FACTOR;
-            } while (newCapacity < newLength);
-        }
-    }
+    const bsl::size_t newCapacity =
+                          MemOutStreamBuf_Util::computeNewCapacity(newLength,
+                                                                   capacity());
 
     BSLS_ASSERT(newCapacity >= newLength);
 
@@ -55,8 +87,17 @@ int MemOutStreamBuf::overflow(int_type insertionChar)
         return traits_type::not_eof(insertionChar);                   // RETURN
     }
 
-    grow(capacity() + 1);
+    if (length() == capacity()) {
+        grow(capacity() + 1);
+    }
     return sputc(static_cast<char_type>(insertionChar));
+}
+
+MemOutStreamBuf::pos_type
+MemOutStreamBuf::seekpos(MemOutStreamBuf::pos_type position,
+                         bsl::ios_base::openmode   which)
+{
+    return seekoff(off_type(position), bsl::ios_base::beg, which);
 }
 
 MemOutStreamBuf::pos_type
@@ -90,13 +131,6 @@ MemOutStreamBuf::seekoff(MemOutStreamBuf::off_type offset,
     return pos_type(length());
 }
 
-MemOutStreamBuf::pos_type
-MemOutStreamBuf::seekpos(MemOutStreamBuf::pos_type position,
-                         bsl::ios_base::openmode   which)
-{
-    return seekoff(off_type(position), bsl::ios_base::beg, which);
-}
-
 bsl::streamsize MemOutStreamBuf::xsputn(const char_type *source,
                                         bsl::streamsize  numChars)
 {
@@ -116,13 +150,14 @@ bsl::streamsize MemOutStreamBuf::xsputn(const char_type *source,
     }
     bsl::copy(source, source + numChars, pptr());
 
-    // 'pbump' accepts an 'int' so (in the unlikely case) that
-    // 'remainingLength' is greater than INT_MAX, we must call 'pbump'
+    // `pbump` accepts an `int` so (in the unlikely case) that
+    // `remainingLength` is greater than `INT_MAX`, we must call `pbump`
     // multiple times.
 
     const bsl::streamsize intMax = static_cast<bsl::streamsize>(
                                               bsl::numeric_limits<int>::max());
     bsl::streamsize       remainingLength = numChars;
+
     do {
         int bumpLength = static_cast<int>(bsl::min(intMax, remainingLength));
         pbump(bumpLength);
@@ -152,8 +187,8 @@ void MemOutStreamBuf::reserveCapacity(bsl::size_t numCharacters)
     // Reset data members appropriately.
     setp(newBuffer, newBuffer + numCharacters);
 
-    // 'pbump' accepts an 'int' so (in the unlikely case) that
-    // 'remainingLength' is greater than INT_MAX, we must call 'pbump'
+    // `pbump` accepts an `int` so (in the unlikely case) that
+    // `remainingLength` is greater than `INT_MAX`, we must call `pbump`
     // multiple times.
 
     const bsl::size_t intMax = static_cast<bsl::size_t>(
