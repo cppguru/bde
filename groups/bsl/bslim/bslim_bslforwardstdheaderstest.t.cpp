@@ -99,6 +99,14 @@ void aSsErT(bool condition, const char *message, int line)
 # define BSLIM_BSLSTANDARDHEADERTEST_CAN_TEST_TEMPLATES     1
 #endif
 
+#if defined(BSLS_LIBRARYFEATURES_STDCPP_GNU) && _GLIBCXX_RELEASE < 13
+    // GCC 12.1 has a known bug, fixed in GCC 12.2, that the C++20 sync stream
+    // templaetes and typedefs are not forwatd declared in `<iosfwd>`.
+    // Although the issue is resolved in 12.2, the library version macro does
+    // no distinguish point releases, so we disable associated tests for all
+    // GCC 12 releases.
+# define BSLIM_BSLSTANDARDHEADERTEST_NO_FWD_STD_SYNC_STREAMS    1
+#endif
 //=============================================================================
 //                       GLOBAL HELPER CLASSES FOR TESTING
 //-----------------------------------------------------------------------------
@@ -223,10 +231,10 @@ class CompleteTemplate {};
 
 int main(int argc, char *argv[])
 {
-    const int test                 = argc > 1 ? atoi(argv[1]) : 0;
-    const bool verbose             = argc > 2;
-    const bool veryVerbose         = argc > 3;
-    const bool veryVeryVerbose     = argc > 4;
+    const int                 test = argc > 1 ? atoi(argv[1]) : 0;
+    const bool             verbose = argc > 2;
+    const bool         veryVerbose = argc > 3;
+    const bool     veryVeryVerbose = argc > 4;
     const bool veryVeryVeryVerbose = argc > 4;
 
     (void)veryVeryVerbose;
@@ -374,7 +382,8 @@ int main(int argc, char *argv[])
             ASSERT(type_is_incomplete<bsl::wsyncbuf>::value);
         }
 
-#if __cpp_lib_syncbuf >= 201803L
+#if defined(BSLS_LIBRARYFEATURES_HAS_CPP20_SYNCSTREAM)                        \
+ && !defined(BSLIM_BSLSTANDARDHEADERTEST_NO_FWD_STD_SYNC_STREAMS)
         if (veryVerbose) puts("Testing bsl types do not alias std");
         {
             ASSERT((!aliases_same_template<bsl::basic_osyncstream,
