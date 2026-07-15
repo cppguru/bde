@@ -21,8 +21,8 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Tue Apr  8 14:32:42 2025
-// Command line: sim_cpp11_features.pl bslma_bslallocator.h
+// Generated on Wed Jul 15 14:05:55 2026
+// Command line: sim_cpp11_features.py bslma_bslallocator.h
 
 #ifdef COMPILING_BSLMA_BSLALLOCATOR_H
 
@@ -180,7 +180,7 @@ class allocator : public polymorphic_allocator<TYPE> {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslma_bslallocator.h
+// Command line: sim_cpp11_features.py bslma_bslallocator.h
 #ifndef BSLMA_BSLALLOCATOR_VARIADIC_LIMIT
 #define BSLMA_BSLALLOCATOR_VARIADIC_LIMIT 14
 #endif
@@ -969,7 +969,7 @@ struct allocator_traits<allocator<TYPE> > {
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslma_bslallocator.h
+// Command line: sim_cpp11_features.py bslma_bslallocator.h
 #ifndef BSLMA_BSLALLOCATOR_VARIADIC_LIMIT
 #define BSLMA_BSLALLOCATOR_VARIADIC_LIMIT 14
 #endif
@@ -2051,7 +2051,7 @@ void allocator<TYPE>::construct(ELEMENT_TYPE *address)
 
 #if BSLS_COMPILERFEATURES_SIMULATE_VARIADIC_TEMPLATES
 // {{{ BEGIN GENERATED CODE
-// Command line: sim_cpp11_features.pl bslma_bslallocator.h
+// Command line: sim_cpp11_features.py bslma_bslallocator.h
 #ifndef BSLMA_BSLALLOCATOR_VARIADIC_LIMIT
 #define BSLMA_BSLALLOCATOR_VARIADIC_LIMIT 14
 #endif
@@ -3163,12 +3163,15 @@ typename allocator<TYPE>::size_type allocator<TYPE>::max_size() const
     // Return the largest value, `v`, such that `v * sizeof(T)` fits in a
     // `size_type`.
 
-    BSLS_KEYWORD_CONSTEXPR
-        const size_type MAX_NUM_BYTES    = ~size_type(0);
-    BSLS_KEYWORD_CONSTEXPR
-        const size_type MAX_NUM_ELEMENTS = MAX_NUM_BYTES / sizeof(TYPE);
+    // The result is as-if computed by:
+    // ...
+    //  const size_type MAX_NUM_BYTES    = ~size_type(0);
+    //  const size_type MAX_NUM_ELEMENTS = MAX_NUM_BYTES / sizeof(TYPE);
+    //
+    //  return MAX_NUM_ELEMENTS;
+    // ...
 
-    return MAX_NUM_ELEMENTS;
+    return ~size_type(0) / sizeof(TYPE);
 }
 
 template <class TYPE>

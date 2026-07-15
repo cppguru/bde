@@ -1441,17 +1441,9 @@ struct TestTestIterators_LegacyClassifier
 {
     BSLS_KEYWORD_CONSTEXPR static int classify()
     {
-        typedef
-            typename bsl::iterator_traits<t_INPUT_ITERATOR>::iterator_category
-                                                                  IterCategory;
-        if BSLS_KEYWORD_CONSTEXPR_CPP17 (
-            bsl::is_convertible<IterCategory,
-                                bsl::forward_iterator_tag>::value) {
-            return 5;                                                 // RETURN
-        }
-        else {
-            return 6;                                                 // RETURN
-        }
+        return bsl::is_convertible<
+            typename bsl::iterator_traits<t_INPUT_ITERATOR>::iterator_category,
+            bsl::forward_iterator_tag>::value ? 5 : 6;
     }
 };
 

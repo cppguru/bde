@@ -212,16 +212,9 @@ IteratorUtil_LegacyInsertDistance<t_INPUT_ITERATOR,
                                   t_SENTINEL,
                                   t_MATCHING_SENTINEL>::canCalculate()
 {
-    typedef typename bsl::iterator_traits<t_INPUT_ITERATOR>::iterator_category
-                                                                  IterCategory;
-    if BSLS_KEYWORD_CONSTEXPR_CPP17 (
-        bsl::is_convertible<IterCategory,
-                            bsl::forward_iterator_tag>::value) {
-        return true;                                                  // RETURN
-    }
-    else {
-        return false;                                                 // RETURN
-    }
+    return bsl::is_convertible<
+            typename bsl::iterator_traits<t_INPUT_ITERATOR>::iterator_category,
+            bsl::forward_iterator_tag>::value;
 }
 
 template <class t_INPUT_ITERATOR,
