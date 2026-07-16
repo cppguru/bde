@@ -5,6 +5,7 @@
 BSLS_IDENT_RCSID(balb_pipecontrolchannel_cpp,"$Id$ $CSID$")
 
 #include <bdlf_bind.h>
+#include <bdls_filepermissions.h>
 #include <bdls_filesystemutil.h>
 #include <bdls_pathutil.h>
 #include <bdls_pipeutil.h>
@@ -45,6 +46,9 @@ BSLS_IDENT_RCSID(balb_pipecontrolchannel_cpp,"$Id$ $CSID$")
 #endif
 
 namespace {
+namespace u {
+
+using namespace BloombergLP;
 
 #ifdef BSLS_PLATFORM_OS_WINDOWS
 bsl::string describeWin32Error(DWORD lastError)
@@ -63,6 +67,7 @@ bsl::string describeWin32Error(DWORD lastError)
 }
 #endif
 
+}  // close namespace u
 }  // close unnamed namespace
 
 namespace BloombergLP {
@@ -150,7 +155,7 @@ int PipeControlChannel::readNamedPipe()
     if (!ConnectNamedPipe(d_impl.d_windows.d_handle, NULL)) {
         BSLS_LOG_TRACE("Connecting to named pipe '%s': %s",
                        d_pipeName.c_str(),
-                       describeWin32Error(GetLastError()).c_str());
+                       u::describeWin32Error(GetLastError()).c_str());
 
         DWORD lastError = GetLastError();
         if (lastError != ERROR_PIPE_CONNECTED && lastError != ERROR_NO_DATA) {
@@ -204,7 +209,7 @@ int PipeControlChannel::readNamedPipe()
             if (ERROR_BROKEN_PIPE != err) {
                 BSLS_LOG_TRACE("Failed read from named pipe '%s': %s",
                                d_pipeName.c_str(),
-                               describeWin32Error(err).c_str());
+                               u::describeWin32Error(err).c_str());
             } else {
                 // The 'ERROR_BROKEN_PIPE' case simply means that the client
                 // closed the connection but did not tell us to shut down; we
@@ -254,7 +259,7 @@ PipeControlChannel::createNamedPipe(const char *pipeName)
         }
         BSLS_LOG_TRACE("Failed to create named pipe '%s': %s",
                        d_pipeName.c_str(),
-                       describeWin32Error(GetLastError()).c_str());
+                       u::describeWin32Error(GetLastError()).c_str());
         return -1;                                                    // RETURN
     }
 
@@ -469,7 +474,7 @@ PipeControlChannel::createNamedPipe(const char *pipeName)
         }
     }
 
-    int rc = mkfifo(pipeName, 0666);
+    int rc = mkfifo(pipeName, d_permissions);
     if (0 != rc) {
         int savedErrno = errno;
         BSLS_LOG_ERROR("Unable to create pipe '%s'. errno = %d (%s)",
@@ -538,6 +543,9 @@ PipeControlChannel::createNamedPipe(const char *pipeName)
 
 namespace balb {
 
+// CONSTANTS
+const int PipeControlChannel::k_DEFAULT_PERMISSIONS;
+
 // CREATORS
 PipeControlChannel::PipeControlChannel(const ControlCallback&  callback,
                                        bslma::Allocator       *basicAllocator)
@@ -548,8 +556,32 @@ PipeControlChannel::PipeControlChannel(const ControlCallback&  callback,
 , d_buffer(bslma::Default::allocator(basicAllocator))
 , d_thread(bslmt::ThreadUtil::invalidHandle())
 , d_backgroundState(e_STOPPED)
+, d_permissions(k_DEFAULT_PERMISSIONS)
 , d_isPipeOpen(false)
 {
+#ifdef BSLS_PLATFORM_OS_WINDOWS
+    d_impl.d_windows.d_handle = INVALID_HANDLE_VALUE;
+#else
+    d_impl.d_unix.d_readFd    = -1;
+    d_impl.d_unix.d_writeFd   = -1;
+#endif
+}
+
+PipeControlChannel::PipeControlChannel(const ControlCallback&  callback,
+                                       int                     permissions,
+                                       bslma::Allocator       *basicAllocator)
+: d_callback(bsl::allocator_arg_t(),
+             bsl::allocator<ControlCallback>(basicAllocator),
+             callback)
+, d_pipeName(bslma::Default::allocator(basicAllocator))
+, d_buffer(bslma::Default::allocator(basicAllocator))
+, d_thread(bslmt::ThreadUtil::invalidHandle())
+, d_backgroundState(e_STOPPED)
+, d_permissions(permissions)
+, d_isPipeOpen(false)
+{
+    BSLS_ASSERT(bdls::FilePermissions::isValidBaseBits(permissions));
+
 #ifdef BSLS_PLATFORM_OS_WINDOWS
     d_impl.d_windows.d_handle = INVALID_HANDLE_VALUE;
 #else
@@ -565,6 +597,14 @@ PipeControlChannel::~PipeControlChannel()
 }
 
 // MANIPULATORS
+void PipeControlChannel::setPermissions(int permissions)
+{
+    BSLS_ASSERT(e_STOPPED == d_backgroundState);
+    BSLS_ASSERT(bdls::FilePermissions::isValidBaseBits(permissions));
+
+    d_permissions = permissions;
+}
+
 void PipeControlChannel::backgroundProcessor()
 {
     while (d_backgroundState == e_RUNNING) {

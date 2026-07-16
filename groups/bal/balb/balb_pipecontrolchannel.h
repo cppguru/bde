@@ -65,6 +65,27 @@ BSLS_IDENT("$Id: $")
 // each message.  This trailing newline is stripped from the message before
 // the message is passed to the control callback.
 //
+///Pipe Permissions
+///----------------
+// This component creates its underlying named pipe with a permission bit
+// mask that defaults to `k_DEFAULT_PERMISSIONS` (`0666`, i.e., read and write
+// for owner, group, and others).  A different permission bit mask may be
+// supplied at construction time via the constructor overload taking an
+// `int permissions` argument, or may be changed after construction (but before
+// `start`) by calling `setPermissions`.  The bit-mask semantics follow the
+// conventional Unix mode-bit layout enumerated by `bdls::FilePermissions`;
+// callers may express the desired permissions either as an octal literal
+// (e.g., `0640`) or by OR-ing together `bdls::FilePermissions` enumerators
+// (e.g., `bdls::FilePermissions::k_OWNER_READ | ...`).  Only the nine
+// owner/group/others read/write/execute bits are accepted (see
+// `bdls::FilePermissions::isValidBaseBits`); `k_SET_UID`, `k_SET_GID`, and
+// `k_STICKY_BIT` are not meaningful for a control pipe and result in
+// undefined behavior.
+//
+// On operating systems that do not support Unix-style permission bits
+// (notably Windows) the requested permission bit mask is silently ignored
+// and the pipe is created with the operating-system default permissions.
+//
 ///Platform-Specific Pipe Name Encoding Caveats
 ///--------------------------------------------
 // Pipe-name encodings have the following caveats for the following operating
@@ -209,6 +230,8 @@ BSLS_IDENT("$Id: $")
 
 #include <balscm_version.h>
 
+#include <bdls_filepermissions.h>
+
 #include <bslmt_threadattributes.h>
 #include <bslmt_threadutil.h>
 
@@ -247,6 +270,17 @@ class PipeControlChannel {
     typedef bsl::function<void(const bslstl::StringRef& message)>
                                                                ControlCallback;
 
+    // CONSTANTS
+
+    /// The default permission bit mask for the underlying named pipe
+    /// (read/write for owner, group, and others).
+    static const int k_DEFAULT_PERMISSIONS =
+                                         bdls::FilePermissions::k_OWNER_READ  |
+                                         bdls::FilePermissions::k_OWNER_WRITE |
+                                         bdls::FilePermissions::k_GROUP_READ  |
+                                         bdls::FilePermissions::k_GROUP_WRITE |
+                                         bdls::FilePermissions::k_OTHERS_READ |
+                                         bdls::FilePermissions::k_OTHERS_WRITE;
   private:
     // TYPES
     enum BackgroundThreadState {
@@ -261,6 +295,10 @@ class PipeControlChannel {
     bsl::vector<char>         d_buffer;       // message buffer
     bslmt::ThreadUtil::Handle d_thread;       // background processing thread
     bsls::AtomicInt           d_backgroundState; // the background thread state
+    int                       d_permissions;  // permission bit mask for the
+                                              // created named pipe (see
+                                              // `bdls_filepermissions`);
+                                              // ignored on Windows
     bool                      d_isPipeOpen;   // true if the pipe is still open
 
     union {
@@ -320,10 +358,30 @@ class PipeControlChannel {
 
     /// Create a pipe control mechanism that dispatches messages to the
     /// specified `callback`.  Optionally specify `basicAllocator` to supply
-    /// memory.  If `basicAllocator` is zero, the currently installed
-    /// default allocator is used.
+    /// memory.  If `basicAllocator` is zero, the currently installed default
+    /// allocator is used.  The permission bit mask of the underlying named
+    /// pipe defaults to `k_DEFAULT_PERMISSIONS` (0666, i.e., read/write for
+    /// everyone) and may be changed by calling `setPermissions` before
+    /// `start`.
     explicit
     PipeControlChannel(const ControlCallback&  callback,
+                       bslma::Allocator       *basicAllocator = 0);
+
+    /// Create a pipe control mechanism that dispatches messages to the
+    /// specified `callback` and creates its underlying named pipe with the
+    /// specified `permissions` bit mask.  Optionally specify
+    /// `basicAllocator` to supply memory.  If `basicAllocator` is zero, the
+    /// currently installed default allocator is used.  The behavior is
+    /// undefined unless `bdls::FilePermissions::isValidBaseBits(permissions)`
+    /// (i.e., unless `permissions` is a combination of the nine
+    /// owner/group/others read/write/execute bits defined by
+    /// `bdls::FilePermissions`; note that `k_SET_UID`, `k_SET_GID`, and
+    /// `k_STICKY_BIT` are not accepted).  On operating systems that do not
+    /// support Unix-style permission bits (notably Windows) the value is
+    /// ignored and falls back to the operating-system default (see the
+    /// component-level documentation for details).
+    PipeControlChannel(const ControlCallback&  callback,
+                       int                     permissions,
                        bslma::Allocator       *basicAllocator = 0);
 
     /// Destroy this object.  Shut down the processing thread if it is still
@@ -332,6 +390,17 @@ class PipeControlChannel {
     ~PipeControlChannel();
 
     // MANIPULATORS
+
+    /// Set the permission bit mask for the underlying named pipe to the
+    /// specified `permissions` value.  The behavior is undefined unless
+    /// `bdls::FilePermissions::isValidBaseBits(permissions)`.  This setting
+    /// only takes effect on the next call to `start`; calling this method
+    /// has no effect on a pipe that has already been opened.  See the
+    /// class-level documentation for a description of the cross-platform
+    /// semantics.  The behavior is undefined if this method is called while
+    /// the background thread is running (i.e., after `start` and before
+    /// `shutdown`), or if the `permissions` value is not valid.
+    void setPermissions(int permissions);
 
     /// Open a named pipe having the specified `pipeName`, and start a
     /// thread to read messages and dispatch them to the callback specified
@@ -362,6 +431,10 @@ class PipeControlChannel {
     void stop();
 
     // ACCESSORS
+
+    /// Return the permission bit mask that will be applied to the named
+    /// pipe on the next call to `start`.
+    int permissions() const;
 
     /// Return the fully qualified system name of the pipe.
     const bsl::string& pipeName() const;
@@ -458,6 +531,12 @@ int PipeControlChannel::start(const STRING_TYPE&             pipeName,
 }
 
 // ACCESSORS
+inline
+int PipeControlChannel::permissions() const
+{
+    return d_permissions;
+}
+
 inline
 const bsl::string& PipeControlChannel::pipeName() const
 {

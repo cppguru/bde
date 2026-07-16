@@ -13,6 +13,7 @@
 #include <bslmt_threadgroup.h>
 #include <bslmt_threadutil.h>
 
+#include <bdls_filepermissions.h>
 #include <bdls_filesystemutil.h>
 #include <bdls_pathutil.h>
 #include <bdls_pipeutil.h>
@@ -21,6 +22,7 @@
 #include <bslma_testallocator.h>
 
 #include <bsls_assert.h>
+#include <bsls_asserttest.h>
 #include <bsls_atomic.h>
 #include <bsls_log.h>
 #include <bsls_platform.h>
@@ -33,6 +35,7 @@
 #include <bsl_cstring.h>
 #include <bsl_fstream.h>
 #include <bsl_iostream.h>
+#include <bsl_optional.h>
 
 #ifdef BSLS_PLATFORM_OS_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
@@ -88,6 +91,7 @@ using namespace bsl;
 //
 // ACCESSORS
 // [ 1] const bsl::string& pipeName() const;
+// [ 5] int permissions() const;
 //
 // [ 1] bslma::Allocator *allocator() const;
 
@@ -153,10 +157,22 @@ void aSsErT(bool condition, const char *message, int line)
 #define L_           BSLIM_TESTUTIL_L_  // current Line number
 
 // ============================================================================
+//                  NEGATIVE-TEST MACRO ABBREVIATIONS
+// ----------------------------------------------------------------------------
+
+#define ASSERT_SAFE_PASS(EXPR) BSLS_ASSERTTEST_ASSERT_SAFE_PASS(EXPR)
+#define ASSERT_SAFE_FAIL(EXPR) BSLS_ASSERTTEST_ASSERT_SAFE_FAIL(EXPR)
+#define ASSERT_PASS(EXPR)      BSLS_ASSERTTEST_ASSERT_PASS(EXPR)
+#define ASSERT_FAIL(EXPR)      BSLS_ASSERTTEST_ASSERT_FAIL(EXPR)
+#define ASSERT_OPT_PASS(EXPR)  BSLS_ASSERTTEST_ASSERT_OPT_PASS(EXPR)
+#define ASSERT_OPT_FAIL(EXPR)  BSLS_ASSERTTEST_ASSERT_OPT_FAIL(EXPR)
+
+// ============================================================================
 //            GLOBAL TYPES, CONSTANTS, AND VARIABLES FOR TESTING
 // ----------------------------------------------------------------------------
 
-typedef bdls::FilesystemUtil FUtil;
+typedef balb::PipeControlChannel    Obj;
+typedef bdls::FilesystemUtil        FUtil;
 
 int verbose = 0;
 int veryVerbose = 0;
@@ -1634,18 +1650,30 @@ int main(int argc, char *argv[])
         // TESTING CONCERN: DATA SENT BY A CLIENT IS READ FROM THE PIPE
         //
         // Concerns:
-        //   Data sent through the named pipe by a client is read by the object
-        //   and specified as the argument to the control callback.
+        // 1. Data sent through the named pipe by a client is read by the
+        //    object and specified as the argument to the control callback.
+        //
+        // 2. The pipe is opened with the `permissions` specified at
+        //    construction, and if the `permissions` is illegal, the behavior
+        //    is undefined.
         //
         // Plan:
-        //    Create a pipe control channel and start the channel processing
+        // 1. Create a pipe control channel and start the channel processing
         //    a named pipe.  Write a payload to the named pipe, and verify the
         //    pipe control channel's control callback is invoked with an
         //    argument having the same value as the payload written to the
         //    pipe.
         //
+        // 2. Negative test with an illegal value of `permissions`.
+        //
+        // 3. The `permissions` accessor returns `k_DEFAULT_PERMISSIONS` for a
+        //    default-constructed object, returns the value passed to the
+        //    value constructor, and returns the value most recently supplied
+        //    to `setPermissions`.
+        //
         // Testing:
         //   Reading data from the named pipe
+        //   int permissions() const;
         // --------------------------------------------------------------------
 
 #if defined(BSLS_PLATFORM_OS_WINDOWS) || defined(BSLS_PLATFORM_OS_CYGWIN)
@@ -1659,32 +1687,174 @@ int main(int argc, char *argv[])
         }
 
         bslma::TestAllocator ta(veryVeryVeryVerbose);
-        {
-            FUtil::remove(pipeName.c_str());
 
-            const char MESSAGE[]  = "Hello, world!";
+        typedef bdls::FilePermissions FP;
 
-            bslmt::Barrier barrier(2);
+        // Neutralize this process's umask for the duration of the loop, so
+        // that the mode bits reported by `stat` reflect exactly what was
+        // requested (`mkfifo` applies `~umask` to its mode argument).  The
+        // previous umask is restored after the loop.
+        const mode_t savedUmask = ::umask(0);
 
-            balb::PipeControlChannel channel(bdlf::BindUtil::bind(
-                                                        &verifyPayload,
-                                                        bsl::string(MESSAGE),
-                                                        bdlf::PlaceHolders::_1,
-                                                        &barrier),
-                                             &ta);
+        static const struct Data {
+            int             d_line;
+            int             d_permissions;
+            bool            d_expectSuccess;
+        } DATA[] = {
+            //Line permissions                                            ok?
+            //---- ----------------------------------------------         ---
+            { L_,  0666,                                                   1 },
+            { L_,  0660,                                                   1 },
+            { L_,  0600,                                                   1 },
 
-            int rc = channel.start(pipeName);
-            ASSERT(0 == rc);
+            // Composed from `bdls::FilePermissions` enumerators.
+            { L_,  FP::k_OWNER_READ | FP::k_OWNER_WRITE
+                 | FP::k_GROUP_READ | FP::k_GROUP_WRITE
+                 | FP::k_OTHERS_READ | FP::k_OTHERS_WRITE,                 1 },
+            { L_,  FP::k_OWNER_ALL,                                        1 },
 
-            bdls::PipeUtil::send(pipeName, bsl::string(MESSAGE) + "\n");
-            barrier.wait();
+            // No permissions: creator cannot open the pipe, so `start` fails.
+            { L_,  0000,                                                   0 },
+        };
+        enum { k_NUM_DATA = sizeof DATA / sizeof *DATA };
 
-            channel.shutdown();
-            channel.stop();
+        for (int ti = 0; ti < k_NUM_DATA; ++ti) {
+            for (char cfg = 'a'; cfg <= 'b'; ++cfg) {
+                const char     CONFIG = cfg;
+                const Data&    data   = DATA[ti];
+                const int      LINE   = data.d_line;
+                const int      PERMS  = data.d_permissions;
+                const bool     EXP_OK = data.d_expectSuccess;
+
+                FUtil::remove(pipeName.c_str());
+
+                const char MESSAGE[]  = "Hello, world!";
+
+                bslmt::Barrier barrier(2);
+
+                Obj::ControlCallback cb =
+                    bdlf::BindUtil::bind(&verifyPayload,
+                                        bsl::string(MESSAGE),
+                                        bdlf::PlaceHolders::_1,
+                                        &barrier);
+
+                bsl::optional<Obj> channel;
+                switch (CONFIG) {
+                  case 'a': {
+                    channel.emplace(cb, PERMS, &ta);
+                  } break;
+                  case 'b': {
+                    channel.emplace(cb, &ta);
+                    channel->setPermissions(PERMS);
+                  } break;
+                  default: {
+                    BSLS_ASSERT_OPT(0 == "Bad config.");
+                  } break;
+                }
+
+                ASSERTV(LINE, CONFIG, PERMS, channel->permissions(),
+                        PERMS == channel->permissions());
+
+                const int rc = channel->start(pipeName);
+                ASSERTV(LINE, CONFIG, EXP_OK, rc, EXP_OK == (0 == rc));
+                if (0 == rc) {
+                    // Verify the pipe was actually created with the requested
+                    // permission bits (this would fail if `d_permissions` were
+                    // being ignored and `mkfifo` silently received `0666`
+                    // regardless).
+                    struct stat sb;
+                    const int statRc = ::stat(pipeName.c_str(), &sb);
+                    ASSERTV(LINE, CONFIG, statRc, 0 == statRc);
+                    ASSERTV(LINE, CONFIG, PERMS, sb.st_mode & 0777,
+                        static_cast<mode_t>(PERMS) == (sb.st_mode & 0777));
+
+                    bdls::PipeUtil::send(pipeName,
+                                         bsl::string(MESSAGE) + "\n");
+                    barrier.wait();
+                    channel->shutdown();
+                    channel->stop();
+                }
+
+                // Destroy the channel (closing any open fd) *before* removing
+                // the FIFO inode, so the last row (which leaves a stale pipe
+                // when `start` fails) does not survive past this iteration.
+                channel.reset();
+                FUtil::remove(pipeName.c_str());
+            }
         }
+
+        ::umask(savedUmask);
+
         ASSERT(0 < ta.numAllocations());
         ASSERT(0 == ta.numBytesInUse());
+
+        if (verbose) cout << "Negative Testing\n";
+        {
+            bsls::AssertTestHandlerGuard hG;
+
+            bslmt::Barrier barrier(1);
+
+            Obj::ControlCallback cb =
+                bdlf::BindUtil::bind(&verifyPayload,
+                                     bsl::string("woof"),
+                                     bdlf::PlaceHolders::_1,
+                                     &barrier);
+
+            // Valid base-bit values pass.
+            ASSERT_PASS(Obj(cb, 0666, &ta));
+            ASSERT_PASS(Obj(cb, 0000, &ta));
+            ASSERT_PASS(Obj(cb, 0777, &ta));
+
+            // Set-uid, set-gid, sticky, and out-of-range bits fail.
+            ASSERT_FAIL(Obj(cb, FP::k_SET_UID, &ta));
+            ASSERT_FAIL(Obj(cb, FP::k_SET_GID, &ta));
+            ASSERT_FAIL(Obj(cb, FP::k_STICKY_BIT, &ta));
+            ASSERT_FAIL(Obj(cb, 0666 | FP::k_SET_UID, &ta));
+            ASSERT_FAIL(Obj(cb, 1 << 15, &ta));
+            ASSERT_FAIL(Obj(cb, -1, &ta));
+
+            Obj mX(cb, &ta);
+            ASSERT_PASS(mX.setPermissions(0666));
+            ASSERT_FAIL(mX.setPermissions(FP::k_SET_UID));
+            ASSERT_FAIL(mX.setPermissions(-1));
+        }
 #endif
+
+        if (verbose) cout << "Testing `permissions` accessor\n";
+        {
+            bslma::TestAllocator ta(veryVeryVeryVerbose);
+
+            // Default constructor produces `k_DEFAULT_PERMISSIONS`.
+            Obj mX(&noop, &ta); const Obj& X = mX;
+            ASSERTV(Obj::k_DEFAULT_PERMISSIONS, X.permissions(),
+                    Obj::k_DEFAULT_PERMISSIONS == X.permissions());
+
+            // Value-constructor overload records the supplied `permissions`.
+            {
+                Obj        mY(&noop, 0640, &ta);
+                const Obj& Y = mY;
+                ASSERTV(Y.permissions(), 0640 == Y.permissions());
+            }
+            {
+                Obj        mY(&noop, 0000, &ta);
+                const Obj& Y = mY;
+                ASSERTV(Y.permissions(), 0000 == Y.permissions());
+            }
+            {
+                Obj        mY(&noop, 0777, &ta);
+                const Obj& Y = mY;
+                ASSERTV(Y.permissions(), 0777 == Y.permissions());
+            }
+
+            // `setPermissions` updates the value reported by `permissions`.
+            mX.setPermissions(0600);
+            ASSERTV(X.permissions(), 0600 == X.permissions());
+            mX.setPermissions(0644);
+            ASSERTV(X.permissions(), 0644 == X.permissions());
+            mX.setPermissions(Obj::k_DEFAULT_PERMISSIONS);
+            ASSERTV(X.permissions(),
+                    Obj::k_DEFAULT_PERMISSIONS == X.permissions());
+        }
       } break;
       case 4: {
         // --------------------------------------------------------------------

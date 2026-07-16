@@ -1,5 +1,6 @@
 bdls_fdstreambuf
 bdls_filedescriptorguard
+bdls_filepermissions
 bdls_filesystemutil
 bdls_filesystemutil_transitionaluniximputil
 bdls_filesystemutil_uniximputil
