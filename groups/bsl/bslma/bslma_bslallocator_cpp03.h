@@ -21,7 +21,7 @@
 // regions of C++11 code, then this header contains no code and is not
 // '#include'd in the original header.
 //
-// Generated on Wed Jul 15 14:05:55 2026
+// Generated on Thu Jul 16 09:27:47 2026
 // Command line: sim_cpp11_features.py bslma_bslallocator.h
 
 #ifdef COMPILING_BSLMA_BSLALLOCATOR_H
@@ -3161,15 +3161,9 @@ BSLS_KEYWORD_CONSTEXPR inline
 typename allocator<TYPE>::size_type allocator<TYPE>::max_size() const
 {
     // Return the largest value, `v`, such that `v * sizeof(T)` fits in a
-    // `size_type`.
-
-    // The result is as-if computed by:
-    // ...
-    //  const size_type MAX_NUM_BYTES    = ~size_type(0);
-    //  const size_type MAX_NUM_ELEMENTS = MAX_NUM_BYTES / sizeof(TYPE);
-    //
-    //  return MAX_NUM_ELEMENTS;
-    // ...
+    // `size_type`.  Note that `~size_type(0)` is the maximum value for
+    // `size_type`, the largest possible sequence of bytes to store `TYPE`
+    // objects in.
 
     return ~size_type(0) / sizeof(TYPE);
 }
